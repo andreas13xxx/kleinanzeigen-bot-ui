@@ -54,11 +54,27 @@ RUN curl -fSL https://github.com/novnc/noVNC/archive/refs/tags/v1.6.0.tar.gz -o 
 # identical source on different days can embed different bot binaries. Override at build time
 # (--build-arg BOT_RELEASE=<dated-tag>) if a deterministic, pinned build is required.
 ARG BOT_RELEASE=latest
-RUN mkdir -p /opt/bot-default \
-    && curl -fSL "https://github.com/Second-Hand-Friends/kleinanzeigen-bot/releases/download/${BOT_RELEASE}/kleinanzeigen-bot-linux-${TARGETARCH}" \
-    -o /opt/bot-default/kleinanzeigen-bot \
-    && chmod +x /opt/bot-default/kleinanzeigen-bot \
-    && /opt/bot-default/kleinanzeigen-bot version
+# SHA-256 of the linux bot assets as published by GitHub, passed in by CI. They serve three jobs:
+#  - they sit BEFORE the download so a new bot release invalidates the cached layer (the 'latest'
+#    URL never changes, so without this a cached build would keep shipping the old binary),
+#  - the download is verified against them (skipped when 'unknown', i.e. local builds),
+#  - they are exposed as image labels so bot-watch can tell whether the published image is stale.
+ARG BOT_SHA256_AMD64=unknown
+ARG BOT_SHA256_ARM64=unknown
+RUN set -eu; \
+    mkdir -p /opt/bot-default; \
+    curl -fSL "https://github.com/Second-Hand-Friends/kleinanzeigen-bot/releases/download/${BOT_RELEASE}/kleinanzeigen-bot-linux-${TARGETARCH}" \
+        -o /opt/bot-default/kleinanzeigen-bot; \
+    if [ "${TARGETARCH}" = "arm64" ]; then EXPECTED="${BOT_SHA256_ARM64}"; else EXPECTED="${BOT_SHA256_AMD64}"; fi; \
+    if [ "${EXPECTED}" != "unknown" ]; then \
+        echo "${EXPECTED#sha256:}  /opt/bot-default/kleinanzeigen-bot" | sha256sum -c -; \
+    fi; \
+    chmod +x /opt/bot-default/kleinanzeigen-bot; \
+    /opt/bot-default/kleinanzeigen-bot version | tee /opt/bot-default/VERSION
+
+LABEL org.opencontainers.image.source="https://github.com/andreas13xxx/kleinanzeigen-bot-ui" \
+      bot.sha256.amd64="${BOT_SHA256_AMD64}" \
+      bot.sha256.arm64="${BOT_SHA256_ARM64}"
 
 # Create non-root user with fixed UID/GID (Chromium refuses to run as root).
 # Deterministic IDs prevent permission issues when rebuilding the image

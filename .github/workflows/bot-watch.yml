@@ -1,0 +1,59 @@
+name: Bot watch · rebuild on new kleinanzeigen-bot
+
+# The image bundles the kleinanzeigen-bot binary. This workflow checks daily whether upstream
+# published a different bot than the one inside the current image and, if so, starts the
+# release pipeline (quality gate, scan, push). Rolling the new image out is a manual step.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  packages: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Compare upstream bot with the published image
+        id: cmp
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ghcr.io/${{ github.repository }}:latest
+        run: |
+          set -euo pipefail
+          json=$(gh api repos/Second-Hand-Friends/kleinanzeigen-bot/releases/tags/latest)
+          upstream_amd64=$(jq -r '.assets[] | select(.name == "kleinanzeigen-bot-linux-amd64") | .digest' <<<"$json")
+          upstream_arm64=$(jq -r '.assets[] | select(.name == "kleinanzeigen-bot-linux-arm64") | .digest' <<<"$json")
+          if [[ ! "$upstream_amd64" =~ ^sha256: || ! "$upstream_arm64" =~ ^sha256: ]]; then
+            echo "::error::Upstream release has no usable asset digests"
+            exit 1
+          fi
+
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          if docker pull --platform linux/amd64 "$IMAGE" >/dev/null 2>&1; then
+            image_amd64=$(docker inspect --format '{{ index .Config.Labels "bot.sha256.amd64" }}' "$IMAGE")
+            image_arm64=$(docker inspect --format '{{ index .Config.Labels "bot.sha256.arm64" }}' "$IMAGE")
+          else
+            echo "No published image yet — building the first one."
+            image_amd64=""; image_arm64=""
+          fi
+
+          echo "upstream: $upstream_amd64 / $upstream_arm64"
+          echo "image:    $image_amd64 / $image_arm64"
+          if [[ "$upstream_amd64" != "$image_amd64" || "$upstream_arm64" != "$image_arm64" ]]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+            echo "Image already ships the current bot."
+          fi
+
+      - name: Start the release pipeline
+        if: steps.cmp.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --repo "${{ github.repository }}" --ref "${{ github.event.repository.default_branch }}"

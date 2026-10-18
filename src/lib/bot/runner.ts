@@ -5,7 +5,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { jobs, jobPids } from '@/lib/bot/jobs';
 import { readMergedConfig } from '@/lib/yaml/config';
-import { resolveBrowserMode, buildBrowserConfig, isAttachRun, type BrowserMode } from '@/lib/bot/browser-mode';
+import { resolveBrowserMode, buildBrowserConfig, isAttachRun, isNativeVisibleRun, type BrowserMode } from '@/lib/bot/browser-mode';
 import { extractCDPPort, injectExtensionScripts } from '@/lib/bot/cdp-scripts';
 import { hookCookiesAfterLogin } from '@/lib/stats/cookie-hook';
 import { fetchAdStats } from '@/lib/stats/stats-fetcher';
@@ -202,7 +202,8 @@ export async function runBotCommand(
             acquireBrowserLock(workspace, 'bot'); // now free → take it
           }
           tookBotLock = true;
-          nativeVisible = browserMode === 'visible'; // desktop visible → real non-headless window
+          // Desktop visible (or forceVisible AUTO retry on a desktop) → real non-headless window
+          nativeVisible = isNativeVisibleRun(browserMode, forceVisible);
         }
       }
       applyBrowserMode(merged, workspace, attachPort, nativeVisible);

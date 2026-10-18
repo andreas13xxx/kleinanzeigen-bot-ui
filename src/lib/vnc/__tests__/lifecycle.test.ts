@@ -72,7 +72,7 @@ vi.mock('@/lib/vnc/ports', () => ({
   DISPLAY_START: 90,
 }));
 
-import { startVncLogin, stopVncLogin, getVncSession } from '../lifecycle';
+import { startVncLogin, stopVncLogin, getVncSession, vncGeometry } from '../lifecycle';
 
 function makeFakeProc(pid: number) {
   return { pid, on: vi.fn(), once: vi.fn() };
@@ -246,5 +246,22 @@ describe('getVncSession', () => {
     const session = getVncSession('/ws');
     expect(session).toBeDefined();
     expect(session!.workspace).toBe('/ws');
+  });
+});
+
+describe('vncGeometry', () => {
+  it('defaults to a desktop-width framebuffer (kleinanzeigen.de switches to mobile below 768 px)', () => {
+    expect(vncGeometry(undefined)).toBe('1280x900');
+    expect(Number(vncGeometry(undefined).split('x')[0])).toBeGreaterThanOrEqual(768);
+  });
+
+  it('accepts a valid VNC_GEOMETRY override', () => {
+    expect(vncGeometry('1920x1080')).toBe('1920x1080');
+  });
+
+  it('falls back to the default for malformed values (never passed to Xvnc)', () => {
+    expect(vncGeometry('big')).toBe('1280x900');
+    expect(vncGeometry('1280x900; rm -rf /')).toBe('1280x900');
+    expect(vncGeometry('')).toBe('1280x900');
   });
 });
