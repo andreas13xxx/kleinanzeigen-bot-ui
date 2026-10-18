@@ -14,16 +14,22 @@ export interface VncLoginModalProps {
   onClose: () => void;
   /** null while the session is still starting — the modal shows a connecting state. */
   token: string | null;
+  /** A bot job runs inside this browser: keep the remote screen size fixed and only scale the
+   *  view. Resizing the screen to the small window would drop the page below 768 px, where
+   *  kleinanzeigen.de serves its mobile layout and the bot's navigation times out. */
+  scaleToFit?: boolean;
 }
 
 // noVNC endpoint (token routes websockify to the workspace's Xvnc):
 //   resize=remote   - Xvnc resizes its framebuffer to the iframe (no black bars/scroll)
+//   resize=scale    - (scaleToFit) framebuffer keeps its size, noVNC scales the picture
 //   reconnect=true  - retry on slow cold starts instead of a dead blank viewer
 //   quality=3       - lighter JPEG for the manual-login view on poor connections
 //   compression=9   - max zlib for the non-JPEG (static) rects; costs client CPU, saves bytes
 //   path            - LAST: carries the ?token= for websockify
-function buildBrowserUrl(token: string): string {
-  return `/bot-browser/vnc.html?autoconnect=true&reconnect=true&reconnect_delay=2000&resize=remote&quality=3&compression=9&path=bot-browser/websockify?token=${token}`;
+export function buildBrowserUrl(token: string, scaleToFit = false): string {
+  const resize = scaleToFit ? 'scale' : 'remote';
+  return `/bot-browser/vnc.html?autoconnect=true&reconnect=true&reconnect_delay=2000&resize=${resize}&quality=3&compression=9&path=bot-browser/websockify?token=${token}`;
 }
 
 // Hide noVNC control-bar buttons that duplicate the modal's own controls (fullscreen, clipboard,
@@ -58,7 +64,7 @@ function hideNoVncControls(doc: Document | null | undefined): void {
   doc.head?.appendChild(style);
 }
 
-export function VncLoginModal({ open, onClose, token }: VncLoginModalProps) {
+export function VncLoginModal({ open, onClose, token, scaleToFit = false }: VncLoginModalProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { toast } = useToast();
   const [pasteText, setPasteText] = useState('');
@@ -190,7 +196,7 @@ export function VncLoginModal({ open, onClose, token }: VncLoginModalProps) {
 
             <iframe
               ref={iframeRef}
-              src={buildBrowserUrl(token)}
+              src={buildBrowserUrl(token, scaleToFit)}
               className={`${styles.frameArea} ${styles.frame}`}
               title="Kleinanzeigen-Browser"
               allow="clipboard-read; clipboard-write"

@@ -213,7 +213,7 @@ export function JobOutputModal({ jobId, onClose }: JobOutputModalProps) {
           {/* VNC login modal — portal rendered while the window is open; shows a
               connecting state until the session token is available. */}
           {vnc.modalOpen && (
-            <VncLoginModal open={vnc.modalOpen} token={vnc.token} onClose={vnc.close} />
+            <VncLoginModal open={vnc.modalOpen} token={vnc.token} onClose={vnc.close} scaleToFit={vnc.jobRunning} />
           )}
 
           {/* Output */}
