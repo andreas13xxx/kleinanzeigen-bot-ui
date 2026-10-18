@@ -4,14 +4,36 @@
 PR / push to main ──► CI (lint, tsc, vitest, build, hadolint, image build + Trivy)
                       Security (dependency review, npm audit, gitleaks, Trivy fs)
                       CodeQL via GitHub "Default setup" (Settings -> Code security, suite: Extended)
-release published ─┐
+push of a v* tag ──┐
 bot-watch (daily) ─┼─► Release: CI gate ─► build amd64 ─► Trivy scan ─► push multi-arch ─► attest
-manual dispatch ───┘
+manual dispatch ───┘                                                          └─► GitHub release
                                                     deploy: manual, on the server (see below)
 ```
 
 Nothing is deployed automatically. The pipeline only publishes the image to
 `ghcr.io/andreas13xxx/kleinanzeigen-bot-ui`; rolling it out is a manual step on the server.
+
+## Releases (this is a fork)
+
+A fork starts without any releases or tags: GitHub does not copy them from the upstream
+repository, and upstream's releases are not yours. Releases live per repository, so this fork
+keeps its own, in its own tag namespace.
+
+- **Version release:** use the upstream version the code is based on plus a fork counter, e.g.
+  `v2.77.5-fork.1`, `v2.77.5-fork.2`. Upstream never produces such a tag, so it cannot collide
+  with a tag you fetch from upstream later.
+  ```bash
+  git tag v2.77.5-fork.1 && git push origin v2.77.5-fork.1
+  ```
+  Or *Releases → Draft a new release → create the tag there*. Either way the **Release**
+  workflow builds the image `…:v2.77.5-fork.1` (plus `latest`) and creates the GitHub release with
+  generated notes. Do not click *Publish* on a second release for the same tag; an existing release
+  is left alone.
+- **Rebuild:** a manual run of *Release* (or `bot-watch` when upstream publishes a new bot) pushes
+  `…:rebuild-<UTC date>` and creates a release of the same name. It does not take the *Latest* badge
+  from the last version release.
+- The release workflow does not run on `release: published`; the tag push is the single trigger.
+  A release you create in the web UI pushes its tag, which starts the workflow once.
 
 ## Keeping the bot current
 
