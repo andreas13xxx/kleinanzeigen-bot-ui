@@ -2,7 +2,37 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { readConfig, writeConfig, buildConfig, buildServerConfig, BROWSER_DEFAULTS, applyProductDefaults, isEnvPlaceholder } from '../config';
+import { readConfig, writeConfig, buildConfig, buildServerConfig, BROWSER_DEFAULTS, applyProductDefaults, isEnvPlaceholder, timeoutMultiplierFromEnv, applyEnvOverrides } from '../config';
+
+describe('BOT_TIMEOUT_MULTIPLIER', () => {
+  it('parses a sane factor', () => {
+    expect(timeoutMultiplierFromEnv('3')).toBe(3);
+    expect(timeoutMultiplierFromEnv('1.5')).toBe(1.5);
+  });
+
+  it('treats unset and empty as "not configured" (compose passes an empty string)', () => {
+    expect(timeoutMultiplierFromEnv(undefined)).toBeUndefined();
+    expect(timeoutMultiplierFromEnv('')).toBeUndefined();
+    expect(timeoutMultiplierFromEnv('  ')).toBeUndefined();
+  });
+
+  it('rejects nonsense instead of passing it to the bot', () => {
+    expect(timeoutMultiplierFromEnv('abc')).toBeUndefined();
+    expect(timeoutMultiplierFromEnv('0')).toBeUndefined();
+    expect(timeoutMultiplierFromEnv('-2')).toBeUndefined();
+    expect(timeoutMultiplierFromEnv('1000')).toBeUndefined();
+  });
+
+  it('overrides the file value but keeps the other timeouts', () => {
+    const merged = applyEnvOverrides({ timeouts: { multiplier: 1, page_load: 15 } }, 3);
+    expect(merged.timeouts).toEqual({ multiplier: 3, page_load: 15 });
+  });
+
+  it('leaves the config untouched when nothing is configured', () => {
+    const config = { timeouts: { multiplier: 1 } };
+    expect(applyEnvOverrides(config, undefined)).toBe(config);
+  });
+});
 
 let tmpDir: string;
 
@@ -134,10 +164,14 @@ describe('BROWSER_DEFAULTS', () => {
     expect(BROWSER_DEFAULTS).toHaveProperty('profile_name');
   });
 
-  it('has headless in arguments', () => {
+  it('keeps --headless out of the stored arguments (the browser mode adds it per run)', () => {
     const args = BROWSER_DEFAULTS.arguments as string[];
-    expect(args).toContain('--headless=new');
+    expect(args.some(a => a.startsWith('--headless'))).toBe(false);
     expect(args).toContain('--no-sandbox');
+  });
+
+  it('defaults to the visible browser (headless gets rejected at the kleinanzeigen.de login)', () => {
+    expect(BROWSER_DEFAULTS.mode).toBe('visible');
   });
 
   it('has use_private_window set to false (warm session needs a persistent profile)', () => {

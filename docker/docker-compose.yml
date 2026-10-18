@@ -16,6 +16,8 @@ services:
       # Replace the bot in the volume whenever the image ships a different one (default: true).
       # Set to "false" to keep a manually pinned bot version.
       - BOT_AUTO_SYNC=${BOT_AUTO_SYNC:-true}
+      # Stretch every bot timeout on slow hosts (1-10, empty = bot default). Wins over config.yaml.
+      - BOT_TIMEOUT_MULTIPLIER=${BOT_TIMEOUT_MULTIPLIER:-}
       # Initial size of the visible browser (Xvnc). Must stay >= 768 px wide, otherwise
       # kleinanzeigen.de serves its mobile layout and the login navigation times out.
       - VNC_GEOMETRY=${VNC_GEOMETRY:-1280x900}

@@ -46,8 +46,9 @@ function detectBrowserBinary(): string {
  * Default browser configuration for the bot CLI.
  */
 export const BROWSER_DEFAULTS: Record<string, unknown> = {
+  // No --headless here: buildBrowserConfig adds it per run for headless/auto mode and strips it
+  // for visible mode, so a copy in the stored arguments only misleads.
   arguments: [
-    '--headless=new',
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu',
@@ -60,9 +61,34 @@ export const BROWSER_DEFAULTS: Record<string, unknown> = {
   extensions: [],
   user_data_dir: '',
   profile_name: '',
-  // Default browser mode — overridden per workspace via config.yaml browser.mode
-  mode: 'auto',
+  // Default browser mode — overridden per workspace via config.yaml browser.mode.
+  // 'visible' because kleinanzeigen.de's login rejects headless browsers (the bot reports
+  // IP_RANGE_BLOCKED although the IP is fine): on a desktop that opens a real window, in Docker
+  // the bot attaches to the Xvnc browser. 'auto' tries headless first and so fails first.
+  mode: 'visible',
 };
+
+/**
+ * Timeout factor from the BOT_TIMEOUT_MULTIPLIER environment variable, or undefined when it is
+ * unset or not a sane number. Lets slow hosts (small VMs, NAS) stretch every bot timeout from
+ * the compose file instead of hand-editing config.yaml, which the setup wizard can overwrite.
+ */
+export function timeoutMultiplierFromEnv(raw: string | undefined = process.env.BOT_TIMEOUT_MULTIPLIER): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 1 || value > 10) {
+    console.warn(`[config] BOT_TIMEOUT_MULTIPLIER=${JSON.stringify(raw)} ignored — expected a number between 1 and 10`);
+    return undefined;
+  }
+  return value;
+}
+
+/** Operator overrides from the environment; they win over config.yaml on purpose. */
+export function applyEnvOverrides(config: Record<string, unknown>, multiplier = timeoutMultiplierFromEnv()): Record<string, unknown> {
+  if (multiplier === undefined) return config;
+  const timeouts = { ...((config.timeouts as Record<string, unknown>) ?? {}), multiplier };
+  return { ...config, timeouts };
+}
 
 /**
  * Read config.yaml from a workspace directory.
@@ -127,7 +153,7 @@ export function readMergedConfig(workspace: string): Record<string, unknown> {
     );
   }
 
-  return config;
+  return applyEnvOverrides(config);
 }
 
 /**
@@ -276,8 +302,11 @@ export function loadBotDefaults(): Record<string, unknown> {
 
     botDefaultsCache = applyProductDefaults(parsed);
     return botDefaultsCache;
-  } catch {
-    // Bot not installed or create-config failed — use hardcoded fallback
+  } catch (err) {
+    // Bot not installed or create-config failed — use hardcoded fallback. Say so: silently
+    // running on stale defaults hid a wrong BOT_CMD / missing binary before.
+    const reason = err instanceof Error ? err.message.split('\n')[0] : String(err);
+    console.warn(`[config] bot defaults unavailable (${process.env.BOT_CMD ?? 'kleinanzeigen-bot'}): ${reason} — using built-in defaults`);
     botDefaultsCache = applyProductDefaults(CONFIG_DEFAULTS);
     return botDefaultsCache;
   }
