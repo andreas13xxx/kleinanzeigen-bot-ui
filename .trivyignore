@@ -1,0 +1,4 @@
+# DS-0002 (Dockerfile has no USER): intentional. The container starts as root so entrypoint.sh can
+# fix ownership of the mounted /workspace volume, then every service (app, websockify) is started
+# as the unprivileged botuser via gosu. Chromium itself never runs as root.
+DS-0002

@@ -57,7 +57,8 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - name: Prepare Docker context
-        run: cp docker/entrypoint.sh entrypoint.sh
+        # The Dockerfile COPYs these two from the context root (flat NAS export layout).
+        run: cp docker/entrypoint.sh docker/nginx.conf .
 
       - name: Image tags
         id: meta
