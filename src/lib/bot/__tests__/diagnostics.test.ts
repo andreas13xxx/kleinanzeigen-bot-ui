@@ -32,6 +32,23 @@ describe('diagnoseJobOutput', () => {
     expect(diagnoseJobOutput(out, desktop)[0]).toMatch(/474 Pixel[\s\S]*--window-size/);
   });
 
+  it('names the ad file when the bot rejects a price on a GIVE_AWAY ad', () => {
+    const out = [
+      '[DEBUG] Loading ad from [ads/ad_andere/ad_andere.yaml]...',
+      '[DEBUG] Loading ad from [ads/ad_kostenlose_ledstehlampe/ad_kostenlose_ledstehlampe.yaml]...',
+      'Value error, price must not be specified when price_type is GIVE_AWAY [type=value_error]',
+    ].join('\n');
+    const [hint] = diagnoseJobOutput(out, docker);
+    expect(hint).toContain('ad_kostenlose_ledstehlampe.yaml');
+    expect(hint).not.toContain('ad_andere');
+    expect(hint).toContain('Zu verschenken');
+  });
+
+  it('still gives the GIVE_AWAY hint when the log has no "Loading ad" line', () => {
+    const [hint] = diagnoseJobOutput('price must not be specified when price_type is GIVE_AWAY', docker);
+    expect(hint).toContain('Zu verschenken');
+  });
+
   it('recognises a missing Xvnc on a desktop', () => {
     const [hint] = diagnoseJobOutput('Xvnc konnte nicht gestartet werden (ENOENT)', desktop);
     expect(hint).toContain('Immer sichtbar');

@@ -114,12 +114,25 @@ export function readAd(filePath: string): Record<string, unknown> {
 }
 
 /**
+ * The bot rejects ANY `price` key (even 0) on an ad with price_type GIVE_AWAY:
+ * "price must not be specified when price_type is GIVE_AWAY". The editor and the bulk edit
+ * keep 0 in their form state, so the key has to be dropped where the YAML is produced.
+ * Returns the same object when nothing needs to change.
+ */
+export function withoutGiveAwayPrice<T extends Record<string, unknown>>(ad: T): T {
+  if (ad.price_type !== 'GIVE_AWAY' || !('price' in ad)) return ad;
+  const { price: _price, ...rest } = ad;
+  return rest as T;
+}
+
+/**
  * Write ad data to a YAML file.
  */
 export function writeAd(
   filePath: string,
-  data: Record<string, unknown>,
+  rawData: Record<string, unknown>,
 ): void {
+  const data = withoutGiveAwayPrice(rawData);
   const content = yaml.dump(data, {
     flowLevel: -1,
     sortKeys: false,
@@ -234,4 +247,7 @@ export function applyAdUpdates(
 
   // Apply remaining top-level fields
   Object.assign(ad, updates);
+
+  // Switching an ad to GIVE_AWAY must not leave its old price behind (see withoutGiveAwayPrice).
+  if (ad.price_type === 'GIVE_AWAY') delete ad.price;
 }

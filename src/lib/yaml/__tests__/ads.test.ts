@@ -345,3 +345,42 @@ describe('applyAdUpdates', () => {
     expect('shipping_costs' in ad).toBe(false);
   });
 });
+
+// Regression: the bot rejects ANY price (even 0) on a GIVE_AWAY ad —
+// "price must not be specified when price_type is GIVE_AWAY" — which failed `verify` and publish
+// for ads saved by the editor, whose form state keeps price 0.
+describe('GIVE_AWAY ads carry no price key', () => {
+  it('writeAd drops the price of a GIVE_AWAY ad', () => {
+    const filePath = path.join(tmpDir, 'ads', 'ad_free.yaml');
+    writeAd(filePath, { title: 'Lampe', price_type: 'GIVE_AWAY', price: 0, active: true });
+    const written = readAd(filePath);
+    expect(written).not.toHaveProperty('price');
+    expect(written.price_type).toBe('GIVE_AWAY');
+    expect(fs.readFileSync(filePath, 'utf-8')).not.toMatch(/^price:/m);
+  });
+
+  it('writeAd keeps the price of other price types, including 0 for FIXED', () => {
+    const filePath = path.join(tmpDir, 'ads', 'ad_paid.yaml');
+    writeAd(filePath, { title: 'Lampe', price_type: 'FIXED', price: 0 });
+    expect(readAd(filePath).price).toBe(0);
+  });
+
+  it('writeAd does not mutate the caller\'s object', () => {
+    const data = { price_type: 'GIVE_AWAY', price: 0 };
+    writeAd(path.join(tmpDir, 'ads', 'ad_x.yaml'), data);
+    expect(data.price).toBe(0);
+  });
+
+  it('applyAdUpdates removes the old price when an ad is switched to GIVE_AWAY', () => {
+    const ad: Record<string, unknown> = { price_type: 'FIXED', price: 25 };
+    applyAdUpdates(ad, { price_type: 'GIVE_AWAY', price: 0 });
+    expect(ad.price_type).toBe('GIVE_AWAY');
+    expect(ad).not.toHaveProperty('price');
+  });
+
+  it('applyAdUpdates leaves ordinary price updates alone', () => {
+    const ad: Record<string, unknown> = { price_type: 'FIXED', price: 25 };
+    applyAdUpdates(ad, { price: 30 });
+    expect(ad.price).toBe(30);
+  });
+});

@@ -18,10 +18,29 @@ interface Rule {
   test: RegExp;
   /** Skip the hint when this returns true (e.g. already running the recommended setup). */
   unless?: (ctx: DiagnosticContext) => boolean;
-  hint: (match: RegExpExecArray, ctx: DiagnosticContext) => string;
+  hint: (match: RegExpExecArray, ctx: DiagnosticContext, output: string) => string;
+}
+
+/** Path of the ad file the bot was loading last — the one a validation error belongs to. */
+function lastLoadedAd(output: string): string | undefined {
+  const all = [...output.matchAll(/Loading ad from \[([^\]]+)\]/g)];
+  return all.at(-1)?.[1];
 }
 
 const RULES: Rule[] = [
+  {
+    // The bot rejects any price (even 0) on a "zu verschenken" ad. Older UI versions wrote
+    // price: 0; saving the ad again in the UI removes the key.
+    test: /price must not be specified when price_type is GIVE_AWAY/,
+    hint: (_m, _ctx, output) => {
+      const file = lastLoadedAd(output);
+      return (
+        `Die Anzeige${file ? ` „${file}"` : ''} hat den Preistyp „Zu verschenken" und trotzdem einen Preis. ` +
+        'Der Bot erlaubt dann keinen Preis, auch nicht 0. Die Anzeige in der UI öffnen und speichern ' +
+        '(entfernt den Preis) oder die Zeile „price:" in der YAML-Datei löschen.'
+      );
+    },
+  },
   {
     // Auth0 rejected the login after the password was submitted. The page says "IP-Bereich
     // vorübergehend gesperrt", but the IP is rarely the cause: the same IP logs in fine from a
@@ -81,7 +100,7 @@ export function diagnoseJobOutput(output: string, ctx: DiagnosticContext): strin
     if (rule.unless?.(ctx)) continue;
     const match = rule.test.exec(output);
     if (!match) continue;
-    const hint = rule.hint(match, ctx);
+    const hint = rule.hint(match, ctx, output);
     if (!hints.includes(hint)) hints.push(hint);
   }
   return hints;
