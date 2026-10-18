@@ -19,6 +19,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ detail: 'Authentication required' }, { status: 401 });
     }
 
+    // macOS/Windows ship no Xvnc stack — spawning it fails with ENOENT. The bot opens a real
+    // window there instead (browser mode "visible", or the forced-visible retry).
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      return NextResponse.json(
+        { detail: 'VNC ist auf diesem System nicht verfügbar. Browser-Modus "Immer sichtbar" wählen und den Job erneut starten — der Bot öffnet dann ein normales Chrome-Fenster.' },
+        { status: 409 },
+      );
+    }
+
     const session = await startVncLogin(user.workspace);
     return NextResponse.json({ token: session.token, status: session.status });
   } catch (error) {

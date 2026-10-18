@@ -34,13 +34,23 @@ export function isVncAttachMode(mode: BrowserMode): boolean {
 /**
  * Whether a specific RUN attaches to the VNC browser instead of launching its own — the
  * single source of truth for that decision. True when the run is forced visible (AUTO retry
- * after login_required) OR the configured mode attaches (visible on a headless server).
+ * after login_required) on a headless server, OR the configured mode attaches (visible on a
+ * headless server). On a desktop with a native display there is no Xvnc stack, so a forced
+ * visible run launches a real window instead (see isNativeVisibleRun).
  * Both the queue (to skip the profile teardown that would kill the VNC browser) and the
  * runner (to actually attach) must agree on this, so they call the same predicate rather
  * than each re-deriving it.
  */
 export function isAttachRun(mode: BrowserMode, forceVisible: boolean): boolean {
-  return forceVisible || isVncAttachMode(mode);
+  return (forceVisible && !hasNativeDisplay()) || isVncAttachMode(mode);
+}
+
+/**
+ * Whether a run launches its own real (non-headless) window on the host display: visible
+ * mode or a forced-visible AUTO retry, on a desktop with a native display.
+ */
+export function isNativeVisibleRun(mode: BrowserMode, forceVisible: boolean): boolean {
+  return (mode === 'visible' || forceVisible) && hasNativeDisplay();
 }
 
 interface BuildOpts {
@@ -73,8 +83,9 @@ export function buildBrowserConfig(opts: BuildOpts): { arguments: string[]; user
     // second --headless browser on the shared profile instead → it collided with the VNC
     // browser's lock and the bot died with "Failed to connect to browser".
     args.push(`--remote-debugging-port=${attachPort}`, '--remote-debugging-host=127.0.0.1', `--user-data-dir=${profilePath}`);
-  } else if (mode === 'visible' && nativeVisible) {
+  } else if (nativeVisible) {
     // Desktop: real visible window — no --headless, no Xvnc; bot launches it directly.
+    // Not gated on mode === 'visible': a forceVisible AUTO retry on a desktop also lands here.
     args.push(`--user-data-dir=${profilePath}`);
   } else {
     args.push('--headless=new', `--user-data-dir=${profilePath}`);

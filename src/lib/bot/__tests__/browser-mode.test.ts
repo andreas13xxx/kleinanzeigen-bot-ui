@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { resolveBrowserMode, buildBrowserConfig, hasNativeDisplay, isVncAttachMode, isAttachRun } from '../browser-mode';
+import { resolveBrowserMode, buildBrowserConfig, hasNativeDisplay, isVncAttachMode, isAttachRun, isNativeVisibleRun } from '../browser-mode';
 
 describe('resolveBrowserMode', () => {
   it('defaults to auto when unset/invalid', () => {
@@ -57,6 +57,12 @@ describe('buildBrowserConfig', () => {
     expect(c.arguments).toContain('--remote-debugging-port=9300');
     expect(c.arguments).toContain('--remote-debugging-host=127.0.0.1');
     expect(c.arguments).not.toContain('--headless=new');
+  });
+  it('auto mode + nativeVisible (forceVisible retry on a desktop): real window, never headless', () => {
+    const c = buildBrowserConfig({ mode: 'auto', profilePath: '/w/p', nativeVisible: true, baseArguments: ['--headless=new', ...base] });
+    expect(c.arguments).toContain('--user-data-dir=/w/p');
+    expect(c.arguments.some(a => a.startsWith('--headless'))).toBe(false);
+    expect(c.arguments.some(a => a.startsWith('--remote-debugging-port='))).toBe(false);
   });
   it('auto mode WITHOUT attachPort: headless as before', () => {
     const c = buildBrowserConfig({ mode: 'auto', profilePath: '/w/p', baseArguments: base });
@@ -137,11 +143,23 @@ describe('isAttachRun', () => {
     else process.env.DISPLAY = origDisplay;
   });
 
-  it('true when forceVisible, regardless of mode (AUTO retry attaches to VNC)', () => {
+  it('true when forceVisible on a headless server, regardless of mode (AUTO retry attaches to VNC)', () => {
     setPlatform('linux');
     delete process.env.DISPLAY;
     expect(isAttachRun('auto', true)).toBe(true);
     expect(isAttachRun('headless', true)).toBe(true);
+  });
+
+  // Regression: on macOS there is no Xvnc — a forced-visible retry must NOT try to attach
+  // (that spawned Xvnc and failed with ENOENT); it launches a native window instead.
+  it('false when forceVisible on a desktop with a native display', () => {
+    setPlatform('darwin');
+    delete process.env.DISPLAY;
+    expect(isAttachRun('auto', true)).toBe(false);
+    expect(isAttachRun('visible', true)).toBe(false);
+    setPlatform('linux');
+    process.env.DISPLAY = ':0';
+    expect(isAttachRun('auto', true)).toBe(false);
   });
 
   it('true for visible mode on a headless server even without forceVisible', () => {
@@ -155,5 +173,36 @@ describe('isAttachRun', () => {
     delete process.env.DISPLAY;
     expect(isAttachRun('auto', false)).toBe(false);
     expect(isAttachRun('headless', false)).toBe(false);
+  });
+});
+
+describe('isNativeVisibleRun', () => {
+  const origPlatform = process.platform;
+  const origDisplay = process.env.DISPLAY;
+  const setPlatform = (p: NodeJS.Platform) => Object.defineProperty(process, 'platform', { value: p, configurable: true });
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
+    if (origDisplay === undefined) delete process.env.DISPLAY;
+    else process.env.DISPLAY = origDisplay;
+  });
+
+  it('true for visible mode or a forceVisible retry on a desktop', () => {
+    setPlatform('darwin');
+    delete process.env.DISPLAY;
+    expect(isNativeVisibleRun('visible', false)).toBe(true);
+    expect(isNativeVisibleRun('auto', true)).toBe(true);
+  });
+
+  it('false for headless/auto without forceVisible on a desktop', () => {
+    setPlatform('darwin');
+    expect(isNativeVisibleRun('auto', false)).toBe(false);
+    expect(isNativeVisibleRun('headless', false)).toBe(false);
+  });
+
+  it('false on a headless server (VNC attach path instead)', () => {
+    setPlatform('linux');
+    delete process.env.DISPLAY;
+    expect(isNativeVisibleRun('visible', false)).toBe(false);
+    expect(isNativeVisibleRun('auto', true)).toBe(false);
   });
 });
