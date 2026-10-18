@@ -1,6 +1,6 @@
 services:
   kleinanzeigen-bot-ui:
-    image: ghcr.io/bkd3sign/kleinanzeigen-bot-ui:latest
+    image: ${IMAGE:-ghcr.io/andreas13xxx/kleinanzeigen-bot-ui}:${IMAGE_TAG:-latest}
     container_name: kleinanzeigen-bot-ui
     restart: unless-stopped
     ports:
@@ -13,6 +13,12 @@ services:
       - BOT_CMD=/workspace/bot/kleinanzeigen-bot
       - BOT_DIR=/workspace
       - TZ=${TZ:-Europe/Berlin}
+      # Replace the bot in the volume whenever the image ships a different one (default: true).
+      # Set to "false" to keep a manually pinned bot version.
+      - BOT_AUTO_SYNC=${BOT_AUTO_SYNC:-true}
+      # Initial size of the visible browser (Xvnc). Must stay >= 768 px wide, otherwise
+      # kleinanzeigen.de serves its mobile layout and the login navigation times out.
+      - VNC_GEOMETRY=${VNC_GEOMETRY:-1280x900}
       # Set to "true" only if running behind an HTTPS reverse proxy:
       # - COOKIE_SECURE=true
     shm_size: "512m"

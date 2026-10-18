@@ -31,6 +31,14 @@ const X_SERVER_READY_TIMEOUT_MS = 20_000;
 const XVNC_TERM_GRACE_MS = 2_000;
 const XVNC_TERM_POLL_MS = 100;
 
+// Initial Xvnc framebuffer. kleinanzeigen.de serves its mobile layout below 768 px, which hides the
+// page header and makes the bot's login navigation time out — so the default must be wider than
+// that. A connected noVNC viewer (resize=remote) still resizes it to the modal afterwards.
+const DEFAULT_VNC_GEOMETRY = '1280x900';
+export function vncGeometry(raw: string | undefined = process.env.VNC_GEOMETRY): string {
+  return raw && /^\d{3,4}x\d{3,4}$/.test(raw) ? raw : DEFAULT_VNC_GEOMETRY;
+}
+
 export interface VncSession {
   workspace: string;
   display: number;
@@ -290,7 +298,7 @@ export async function startVncLogin(workspace: string): Promise<VncSession> {
         'Xvnc',
         [
           `:${display}`,
-          '-geometry', '520x600',
+          '-geometry', vncGeometry(),
           '-depth', '24',
           '-SecurityTypes', 'None',
           '-AlwaysShared',

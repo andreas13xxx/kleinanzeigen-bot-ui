@@ -9,6 +9,27 @@ mkdir -p "${WORKSPACE}/.temp" "${WORKSPACE}/bot" "${WORKSPACE}/users" 2>/dev/nul
 if [ ! -f "${WORKSPACE}/bot/kleinanzeigen-bot" ]; then
   cp /opt/bot-default/kleinanzeigen-bot "${WORKSPACE}/bot/kleinanzeigen-bot"
   chmod +x "${WORKSPACE}/bot/kleinanzeigen-bot"
+  cp /opt/bot-default/VERSION "${WORKSPACE}/bot/.image-bot-version" 2>/dev/null || true
+fi
+
+# Keep the bot in the volume in step with the image. The volume outlives image updates, so
+# without this a rebuilt image would silently keep running the bot from the first install.
+# The marker records which bundled bot was last synced: the binary is replaced only when the
+# IMAGE ships a different bot than last time, so an in-app update (Admin -> Bot-Update) made in
+# between is kept until the next image brings a new bot. Opt out with BOT_AUTO_SYNC=false.
+IMAGE_BOT_VERSION="$(cat /opt/bot-default/VERSION 2>/dev/null || true)"
+SYNCED_BOT_VERSION="$(cat "${WORKSPACE}/bot/.image-bot-version" 2>/dev/null || true)"
+if [ "${BOT_AUTO_SYNC:-true}" != "false" ] && [ -n "${IMAGE_BOT_VERSION}" ] \
+   && [ "${IMAGE_BOT_VERSION}" != "${SYNCED_BOT_VERSION}" ]; then
+  echo "Syncing bot binary: '${SYNCED_BOT_VERSION:-none}' -> '${IMAGE_BOT_VERSION}'"
+  if cp /opt/bot-default/kleinanzeigen-bot "${WORKSPACE}/bot/kleinanzeigen-bot.new" \
+     && chmod +x "${WORKSPACE}/bot/kleinanzeigen-bot.new" \
+     && mv -f "${WORKSPACE}/bot/kleinanzeigen-bot.new" "${WORKSPACE}/bot/kleinanzeigen-bot"; then
+    echo "${IMAGE_BOT_VERSION}" > "${WORKSPACE}/bot/.image-bot-version"
+  else
+    echo "WARNING: could not sync bot binary; keeping the existing one." >&2
+    rm -f "${WORKSPACE}/bot/kleinanzeigen-bot.new" 2>/dev/null || true
+  fi
 fi
 
 # Fix ownership so botuser can read/write workspace files.
