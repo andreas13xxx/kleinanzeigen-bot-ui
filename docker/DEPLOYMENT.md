@@ -47,3 +47,21 @@ the same way with the previous tag. The compose file in this folder can be used 
 2. **Repo settings:** enable *Dependabot alerts/security updates*, *Secret scanning with push
    protection* and CodeQL *Default setup* under Settings → Code security. Make **CI** and
    **Security** required status checks on `main` (branch protection).
+
+## Settings that used to be hand-edited in config.yaml
+
+These live in the environment (`docker-compose.yml`) so a re-run of the setup wizard cannot lose them:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `BOT_TIMEOUT_MULTIPLIER` | empty (bot default) | Factor 1–10 for every bot timeout. Raise it (e.g. `3`) on slow hosts if jobs fail with "Page did not finish loading". Wins over `config.yaml`. |
+| `VNC_GEOMETRY` | `1280x900` | Size of the visible browser. Keep the width ≥ 768 px, otherwise kleinanzeigen.de serves its mobile layout. |
+| `BOT_AUTO_SYNC` | `true` | Replace the bot in the volume when the image ships a different one. |
+
+The browser mode now defaults to **visible** (fresh installs). Headless logins are rejected by
+kleinanzeigen.de; the bot then reports `IP_RANGE_BLOCKED` even though the IP is fine. Existing
+installs keep whatever `browser.mode` their `config.yaml` has.
+
+Failed jobs get a "Hinweise der Bot-UI" block at the end of the job log that translates the usual
+symptoms (rejected headless login, slow page load, narrow viewport, missing Xvnc, locked browser
+profile) into their likely cause and the fix.

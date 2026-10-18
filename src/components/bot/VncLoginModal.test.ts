@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { VNC_HIDDEN_CONTROL_IDS, buildVncDeclutterCss } from './VncLoginModal';
+import { VNC_HIDDEN_CONTROL_IDS, buildVncDeclutterCss, buildBrowserUrl } from './VncLoginModal';
+
+describe('buildBrowserUrl', () => {
+  it('resizes the remote screen to the window for manual login (default)', () => {
+    expect(buildBrowserUrl('tok')).toContain('resize=remote');
+  });
+
+  // Regression: resizing the remote screen to the small window dropped a running bot job below
+  // 768 px, where kleinanzeigen.de serves its mobile layout and navigation times out.
+  it('only scales the picture while a bot job runs in the browser', () => {
+    const url = buildBrowserUrl('tok', true);
+    expect(url).toContain('resize=scale');
+    expect(url).not.toContain('resize=remote');
+  });
+
+  it('keeps the token as the last query parameter (carried through path=…?token=)', () => {
+    expect(buildBrowserUrl('abc123', true).endsWith('?token=abc123')).toBe(true);
+  });
+});
 
 describe('VNC control-bar declutter', () => {
   it('hides the pointless/duplicate buttons but keeps the keyboard toggle', () => {

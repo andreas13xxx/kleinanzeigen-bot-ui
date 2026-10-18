@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import { jobs, jobPids } from '@/lib/bot/jobs';
 import { readMergedConfig } from '@/lib/yaml/config';
 import { resolveBrowserMode, buildBrowserConfig, isAttachRun, isNativeVisibleRun, type BrowserMode } from '@/lib/bot/browser-mode';
+import { diagnoseJobOutput, formatHints } from '@/lib/bot/diagnostics';
 import { extractCDPPort, injectExtensionScripts } from '@/lib/bot/cdp-scripts';
 import { hookCookiesAfterLogin } from '@/lib/stats/cookie-hook';
 import { fetchAdStats } from '@/lib/stats/stats-fetcher';
@@ -400,6 +401,9 @@ export async function runBotCommand(
         // so a login wall is surfaced as a plain failure instead of 'login_required'.
         if (status === 'login_required' && browserMode === 'headless') status = 'failed';
         job.status = status;
+        // The bot logs symptoms, not causes. Append what they usually mean and how to fix them, so
+        // a failure is not just a bare status such as "Login erforderlich".
+        job.output += formatHints(diagnoseJobOutput(job.output, { browserMode, attached: vncRun }));
       }
 
       resolve();

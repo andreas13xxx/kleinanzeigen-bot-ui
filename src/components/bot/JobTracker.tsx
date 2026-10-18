@@ -302,7 +302,7 @@ export function JobTracker() {
       )}
 
       {vnc.modalOpen && (
-        <VncLoginModal open={vnc.modalOpen} token={vnc.token} onClose={vnc.close} />
+        <VncLoginModal open={vnc.modalOpen} token={vnc.token} onClose={vnc.close} scaleToFit={vnc.jobRunning} />
       )}
     </div>
   );
