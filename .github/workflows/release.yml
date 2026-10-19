@@ -1,9 +1,13 @@
 name: Release · Docker Build & Push
 
 on:
-  release:
-    types: [published]
+  # A version tag (v2.77.5-fork.1, v2.78.0, ...) builds that version AND creates its GitHub
+  # release. Creating a release in the web UI pushes the tag too, so one trigger covers both —
+  # a separate `release: published` trigger would run everything twice.
+  push:
+    tags: ["v*"]
   # Manual rebuild, and the entry point for bot-watch when a new kleinanzeigen-bot is out.
+  # Publishes the image as `rebuild-<UTC date>` and creates a matching release.
   workflow_dispatch:
 
 permissions:
@@ -23,6 +27,10 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      tag: ${{ steps.rel.outputs.tag }}
+      bot_version: ${{ steps.botver.outputs.version }}
+      digest: ${{ steps.push.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -60,6 +68,21 @@ jobs:
         # The Dockerfile COPYs these two from the context root (flat NAS export layout).
         run: cp docker/entrypoint.sh docker/nginx.conf .
 
+      # One name for the image tag AND the GitHub release: the pushed version tag, or a
+      # timestamp for manual / bot-watch rebuilds.
+      - name: Release tag
+        id: rel
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="rebuild-$(date -u +%Y%m%d-%H%M)"
+          fi
+          # Must be a legal Docker tag, since it is used as one.
+          [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { echo "::error::'$tag' is not a valid image tag"; exit 1; }
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
       - name: Image tags
         id: meta
         uses: docker/metadata-action@v6
@@ -67,8 +90,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ github.event.release.tag_name }},enable=${{ github.event_name == 'release' }}
-            type=raw,value=rebuild-{{date 'YYYYMMDD-HHmm'}},enable=${{ github.event_name != 'release' }}
+            type=raw,value=${{ steps.rel.outputs.tag }}
 
       # Build once for amd64 and scan BEFORE anything is pushed, so a vulnerable image never
       # reaches the registry. The push step below reuses the build cache.
@@ -86,6 +108,13 @@ jobs:
             BOT_SHA256_ARM64=${{ steps.bot.outputs.arm64 }}
           cache-from: type=gha,scope=public-release
           cache-to: type=gha,mode=max,scope=public-release
+
+      - name: Read the bundled bot version
+        id: botver
+        run: |
+          set -euo pipefail
+          v=$(docker run --rm --entrypoint cat kleinanzeigen-bot-ui:scan /opt/bot-default/VERSION | tr -d '\r\n')
+          echo "version=${v}" >> "$GITHUB_OUTPUT"
 
       - name: Scan image (fails on fixable HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@v0.36.0
@@ -120,3 +149,49 @@ jobs:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+  # Separate job so only this one gets write access to the repository contents.
+  github-release:
+    name: Create GitHub release
+    needs: docker-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Create the release (skipped when one already exists)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.docker-build.outputs.tag }}
+          BOT: ${{ needs.docker-build.outputs.bot_version }}
+          DIGEST: ${{ needs.docker-build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          # A release made by hand in the web UI already exists by the time this runs.
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do."
+            exit 0
+          fi
+
+          {
+            echo "Container image: \`ghcr.io/${REPO}:${TAG}\`"
+            echo
+            echo "- Bundled kleinanzeigen-bot: \`${BOT}\`"
+            echo "- Image digest: \`${DIGEST}\`"
+            echo
+            echo "Update: \`docker compose pull && docker compose up -d\` (see docker/DEPLOYMENT.md)."
+            echo
+          } > notes.md
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # Version release: the tag exists; list what changed since the previous release.
+            gh release create "$TAG" --repo "$REPO" --verify-tag --title "$TAG" \
+              --notes-file notes.md --generate-notes
+          else
+            # Rebuild (manual run or new upstream bot): creates its own tag at the built commit
+            # and must not take the "Latest" badge from the last versioned release.
+            echo "Rebuild of the current main; no code changes beyond the commits already on main." >> notes.md
+            gh release create "$TAG" --repo "$REPO" --target "$GITHUB_SHA" --latest=false \
+              --title "Image rebuild ${TAG#rebuild-} (bot ${BOT})" --notes-file notes.md
+          fi
