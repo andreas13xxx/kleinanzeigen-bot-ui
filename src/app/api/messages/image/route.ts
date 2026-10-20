@@ -16,8 +16,11 @@ export async function GET(request: NextRequest) {
     // Strict hostname check to prevent open proxy abuse
     let validHost = false;
     try {
-      const hostname = new URL(imageUrl!).hostname;
-      validHost = hostname.endsWith('.kleinanzeigen.de') || hostname === 'kleinanzeigen.de';
+      const parsedUrl = new URL(imageUrl!);
+      const hostname = parsedUrl.hostname;
+      validHost =
+        parsedUrl.protocol === 'https:' &&
+        (hostname.endsWith('.kleinanzeigen.de') || hostname === 'kleinanzeigen.de');
     } catch { /* invalid URL */ }
     if (!imageUrl || !validHost) {
       return new NextResponse(null, { status: 400 });
@@ -38,8 +41,11 @@ export async function GET(request: NextRequest) {
     const secret = await ensureJwtSecret(data);
     await decodeJwt(jwtToken, secret);
 
+    // Never follow redirects: a redirect could leave the allowed host (SSRF).
     const response = await fetch(imageUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
