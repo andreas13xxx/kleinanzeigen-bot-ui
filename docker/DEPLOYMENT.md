@@ -5,7 +5,7 @@ PR / push to main ──► CI (lint, tsc, vitest, build, hadolint, image build 
                       Security (dependency review, npm audit, gitleaks, Trivy fs)
                       CodeQL via GitHub "Default setup" (Settings -> Code security, suite: Extended)
 push of a v* tag ──┐
-bot-watch (daily) ─┼─► Release: CI gate ─► build amd64 ─► Trivy scan ─► push multi-arch ─► attest
+bot-watch (daily) ─┼─► Release: CI gate (no image build) ─► build amd64 ─► Trivy scan ─► push multi-arch ─► attest
 manual dispatch ───┘                                                          └─► GitHub release
                                                     deploy: manual, on the server (see below)
 ```
@@ -19,21 +19,20 @@ A fork starts without any releases or tags: GitHub does not copy them from the u
 repository, and upstream's releases are not yours. Releases live per repository, so this fork
 keeps its own, in its own tag namespace.
 
-- **Version release:** use the upstream version the code is based on plus a fork counter, e.g.
-  `v2.77.5-fork.1`, `v2.77.5-fork.2`. Upstream never produces such a tag, so it cannot collide
-  with a tag you fetch from upstream later.
+- **Tags** are the upstream version the code is based on plus a fork counter:
+  `v2.77.5-fork1`, `v2.77.5-fork2`, ... Upstream never produces such a tag, so it cannot collide
+  with a tag you fetch from upstream later. Every release builds with the newest upstream bot.
+- **By hand:** push the tag (or create it via *Releases → Draft a new release*).
   ```bash
-  git tag v2.77.5-fork.1 && git push origin v2.77.5-fork.1
+  git tag v2.77.5-fork1 && git push origin v2.77.5-fork1
   ```
-  Or *Releases → Draft a new release → create the tag there*. Either way the **Release**
-  workflow builds the image `…:v2.77.5-fork.1` (plus `latest`) and creates the GitHub release with
-  generated notes. Do not click *Publish* on a second release for the same tag; an existing release
-  is left alone.
-- **Rebuild:** a manual run of *Release* (or `bot-watch` when upstream publishes a new bot) pushes
-  `…:rebuild-<UTC date>` and creates a release of the same name. It does not take the *Latest* badge
-  from the last version release.
+- **Automatic:** a manual run of *Release* (Actions tab) or `bot-watch` (new upstream bot) picks
+  the next free number itself: `v<version in package.json>-fork<highest + 1>`. Tag and GitHub
+  release are created only after the image was pushed, so no tag is left without an image.
+- Either way the **Release** workflow runs the quality gate, builds the image, scans it, pushes
+  `…:<tag>` plus `latest` and creates the GitHub release with generated notes. An existing release
+  for the tag is left alone.
 - The release workflow does not run on `release: published`; the tag push is the single trigger.
-  A release you create in the web UI pushes its tag, which starts the workflow once.
 
 ## Keeping the bot current
 

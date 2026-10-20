@@ -1,13 +1,13 @@
 name: Release · Docker Build & Push
 
 on:
-  # A version tag (v2.77.5-fork.1, v2.78.0, ...) builds that version AND creates its GitHub
+  # A version tag (v2.77.5-fork1, v2.78.0, ...) builds that version AND creates its GitHub
   # release. Creating a release in the web UI pushes the tag too, so one trigger covers both —
   # a separate `release: published` trigger would run everything twice.
   push:
     tags: ["v*"]
-  # Manual rebuild, and the entry point for bot-watch when a new kleinanzeigen-bot is out.
-  # Publishes the image as `rebuild-<UTC date>` and creates a matching release.
+  # Manual run, and the entry point for bot-watch when a new kleinanzeigen-bot is out.
+  # Picks the next free tag v<package.json version>-fork<N> and releases it after the push.
   workflow_dispatch:
 
 permissions:
@@ -21,6 +21,9 @@ jobs:
   ci:
     name: Quality gate
     uses: ./.github/workflows/ci.yml
+    with:
+      # This workflow builds and scans the image itself below.
+      build-image: "false"
 
   docker-build:
     name: Build, scan & push image
@@ -68,8 +71,9 @@ jobs:
         # The Dockerfile COPYs these two from the context root (flat NAS export layout).
         run: cp docker/entrypoint.sh docker/nginx.conf .
 
-      # One name for the image tag AND the GitHub release: the pushed version tag, or a
-      # timestamp for manual / bot-watch rebuilds.
+      # One name for the image tag AND the GitHub release: the pushed version tag, or for
+      # manual / bot-watch runs the next free v<package.json version>-fork<N>. The `release`
+      # concurrency group serializes runs, so two runs cannot pick the same number.
       - name: Release tag
         id: rel
         run: |
@@ -77,7 +81,10 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             tag="$GITHUB_REF_NAME"
           else
-            tag="rebuild-$(date -u +%Y%m%d-%H%M)"
+            base=$(jq -r .version package.json)
+            last=$(git ls-remote --tags --refs origin "refs/tags/v${base}-fork*" \
+              | sed -n "s|.*refs/tags/v${base}-fork\([0-9][0-9]*\)\$|\1|p" | sort -n | tail -1)
+            tag="v${base}-fork$(( ${last:-0} + 1 ))"
           fi
           # Must be a legal Docker tag, since it is used as one.
           [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { echo "::error::'$tag' is not a valid image tag"; exit 1; }
@@ -185,13 +192,11 @@ jobs:
           } > notes.md
 
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            # Version release: the tag exists; list what changed since the previous release.
+            # The tag exists already (pushed by hand or by the web UI).
             gh release create "$TAG" --repo "$REPO" --verify-tag --title "$TAG" \
               --notes-file notes.md --generate-notes
           else
-            # Rebuild (manual run or new upstream bot): creates its own tag at the built commit
-            # and must not take the "Latest" badge from the last versioned release.
-            echo "Rebuild of the current main; no code changes beyond the commits already on main." >> notes.md
-            gh release create "$TAG" --repo "$REPO" --target "$GITHUB_SHA" --latest=false \
-              --title "Image rebuild ${TAG#rebuild-} (bot ${BOT})" --notes-file notes.md
+            # Manual / bot-watch run: create the tag at the built commit together with the release.
+            gh release create "$TAG" --repo "$REPO" --target "$GITHUB_SHA" --title "$TAG" \
+              --notes-file notes.md --generate-notes
           fi
