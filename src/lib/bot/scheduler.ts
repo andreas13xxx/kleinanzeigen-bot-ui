@@ -6,6 +6,7 @@ import type { Schedule, JobStatus } from '@/types/bot';
 import { startJob, jobs } from '@/lib/bot/jobs';
 import { BOT_DIR } from '@/lib/bot/runner';
 import { validateBotCommand } from '@/lib/security/validation';
+import { getUserWorkspace } from '@/lib/yaml/users';
 
 const SCHEDULES_FILE = path.join(BOT_DIR, 'schedules.yaml');
 
@@ -152,11 +153,12 @@ function getNextRun(cronExpr: string): string | undefined {
 
 /**
  * Get the workspace for a schedule based on its creator.
- * User schedules run in the user's workspace, system schedules in BOT_DIR.
+ * User schedules run in the user's workspace, system schedules in BOT_DIR. getUserWorkspace()
+ * falls back to BOT_DIR for a single-user install without users/<id>/ (same as the bot routes).
  */
-function getWorkspaceForSchedule(schedule: Schedule): string {
+export function getWorkspaceForSchedule(schedule: Schedule): string {
   if (schedule.created_by && schedule.created_by !== 'system') {
-    return path.join(BOT_DIR, 'users', schedule.created_by);
+    return getUserWorkspace(schedule.created_by);
   }
   return BOT_DIR;
 }
