@@ -1,4 +1,5 @@
 import cron, { type ScheduledTask } from 'node-cron';
+import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
@@ -119,36 +120,19 @@ export function saveSchedules(schedules: Schedule[]): void {
 }
 
 /**
- * Get the next run time for a cron expression.
+ * Get the next run time for a cron expression. Handles any valid 5-field expression
+ * (steps, lists, day-of-month); node-cron's own getNextRun() is wrong for several of those.
  */
-function getNextRun(cronExpr: string): string | undefined {
+export function getNextRun(cronExpr: string): string | undefined {
   if (!cron.validate(cronExpr)) return undefined;
-
-  // Parse cron fields to calculate next execution
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = cronExpr.split(' ');
-  const now = new Date();
-  const next = new Date(now);
-
-  // Simple approximation: set to the specified hour/minute today or tomorrow
-  const targetHour = hour === '*' ? now.getHours() : parseInt(hour, 10);
-  const targetMinute = minute === '*' ? 0 : parseInt(minute, 10);
-
-  next.setHours(targetHour, targetMinute, 0, 0);
-  if (next <= now) {
-    // If today's time already passed, calculate next occurrence
-    if (dayOfWeek !== '*') {
-      // Weekly: find next matching day
-      const targetDay = parseInt(dayOfWeek, 10);
-      let daysUntil = targetDay - now.getDay();
-      if (daysUntil <= 0) daysUntil += 7;
-      next.setDate(now.getDate() + daysUntil);
-      next.setHours(targetHour, targetMinute, 0, 0);
-    } else {
-      next.setDate(next.getDate() + 1);
-    }
+  try {
+    return CronExpressionParser.parse(cronExpr, {
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }).next().toDate().toISOString();
+  } catch (err) {
+    console.warn(`[Scheduler] Cannot compute next run for '${cronExpr}':`, err);
+    return undefined;
   }
-
-  return next.toISOString();
 }
 
 /**
