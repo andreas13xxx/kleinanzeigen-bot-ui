@@ -185,9 +185,10 @@ export async function POST(request: NextRequest) {
     // Resolve all template-image copy paths up front so a bad path fails the
     // request (400) before anything is written to disk.
     const imageCopies: Array<{ src: string; dest: string }> = [];
+    let tplImagesDir = '';
     if (templateSlug && (ad.images ?? []).length > 0) {
       try {
-        const tplImagesDir = joinInside(getTemplatesDir(ws), `tpl_${templateSlug}`);
+        tplImagesDir = joinInside(getTemplatesDir(ws), `tpl_${templateSlug}`);
         for (const imgName of ad.images ?? []) {
           imageCopies.push({ src: joinInside(tplImagesDir, imgName), dest: joinInside(adDir, imgName) });
         }
@@ -257,9 +258,15 @@ export async function POST(request: NextRequest) {
     // Copy images from template dir to new ad dir
     if (imageCopies.length > 0) {
       const { existsSync, copyFileSync } = await import('fs');
+      const srcRoot = path.resolve(tplImagesDir) + path.sep;
+      const destRoot = path.resolve(adDir) + path.sep;
       for (const { src, dest } of imageCopies) {
+        // Defence in depth: re-assert containment right at the sink
+        const srcAbs = path.resolve(src);
+        const destAbs = path.resolve(dest);
+        if (!srcAbs.startsWith(srcRoot) || !destAbs.startsWith(destRoot)) continue;
         try {
-          if (existsSync(src) && !existsSync(dest)) copyFileSync(src, dest);
+          if (existsSync(srcAbs) && !existsSync(destAbs)) copyFileSync(srcAbs, destAbs);
         } catch { /* skip unreadable files */ }
       }
     }
