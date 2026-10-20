@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Input, Button, Toggle, Badge, useToast } from '@/components/ui';
 import type { Schedule, JobStatus } from '@/types/bot';
 import { jobStatusShortLabel } from '@/lib/bot/job-status';
+import { describeCron } from '@/lib/bot/cron-label';
 import styles from './AutomationPage.module.scss';
 
 const CRON_PRESETS: { label: string; value: string }[] = [
@@ -19,6 +20,7 @@ const CRON_PRESETS: { label: string; value: string }[] = [
   { label: 'Freitags 12:00', value: '0 12 * * 5' },
   { label: 'Samstags 08:00', value: '0 8 * * 6' },
   { label: 'Alle 7 Tage (Montags 08:00)', value: '0 8 * * 1' },
+  { label: 'Alle 3 Tage (08:00)', value: '0 8 */3 * *' },
   { label: 'Alle 14 Tage (1. + 15. 08:00)', value: '0 8 1,15 * *' },
   { label: 'Benutzerdefiniert', value: 'custom' },
 ];
@@ -53,22 +55,7 @@ const ALL_COMMAND_OPTIONS: CommandOption[] = [
 function formatCron(cron: string): string {
   const match = CRON_PRESETS.find((p) => p.value === cron);
   if (match && match.value !== 'custom') return match.label;
-
-  // Simple human-readable parsing
-  const [minute, hour, , , dayOfWeek] = cron.split(' ');
-  const days = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-
-  if (dayOfWeek !== '*') {
-    const dayNum = parseInt(dayOfWeek, 10);
-    return `${days[dayNum] ?? dayOfWeek}s ${hour}:${minute.padStart(2, '0')}`;
-  }
-  if (hour?.includes('/')) {
-    return `Alle ${hour.replace('*/', '')} Stunden`;
-  }
-  if (hour !== '*' && minute !== '*') {
-    return `Täglich ${hour}:${minute.padStart(2, '0')}`;
-  }
-  return cron;
+  return describeCron(cron);
 }
 
 function formatDate(iso: string | undefined): string {
