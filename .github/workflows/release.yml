@@ -23,7 +23,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       # This workflow builds and scans the image itself below.
-      build-image: false
+      build-image: "false"
 
   docker-build:
     name: Build, scan & push image

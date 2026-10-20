@@ -7,8 +7,8 @@ on:
   workflow_call:
     inputs:
       build-image:
-        type: boolean
-        default: true
+        type: string
+        default: "true"
 
 permissions:
   contents: read
@@ -52,7 +52,7 @@ jobs:
 
   image:
     name: Build image and scan
-    if: inputs.build-image != false
+    if: inputs.build-image != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
