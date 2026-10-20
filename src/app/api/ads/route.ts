@@ -182,6 +182,20 @@ export async function POST(request: NextRequest) {
     const adDir = path.join(adsDir, dirName);
     const filePath = path.join(adDir, filename);
 
+    // Resolve all template-image copy paths up front so a bad path fails the
+    // request (400) before anything is written to disk.
+    const imageCopies: Array<{ src: string; dest: string }> = [];
+    if (templateSlug && (ad.images ?? []).length > 0) {
+      try {
+        const tplImagesDir = joinInside(getTemplatesDir(ws), `tpl_${templateSlug}`);
+        for (const imgName of ad.images ?? []) {
+          imageCopies.push({ src: joinInside(tplImagesDir, imgName), dest: joinInside(adDir, imgName) });
+        }
+      } catch {
+        return NextResponse.json({ detail: 'Invalid template image path' }, { status: 400 });
+      }
+    }
+
     // Create directory
     const { mkdir } = await import('fs/promises');
     await mkdir(adDir, { recursive: true });
@@ -241,17 +255,12 @@ export async function POST(request: NextRequest) {
     await writeAd(filePath, data);
 
     // Copy images from template dir to new ad dir
-    if (templateSlug && (data.images as string[])?.length > 0) {
+    if (imageCopies.length > 0) {
       const { existsSync, copyFileSync } = await import('fs');
-      const tplImagesDir = joinInside(getTemplatesDir(ws), `tpl_${templateSlug}`);
-      if (existsSync(tplImagesDir)) {
-        for (const imgName of data.images as string[]) {
-          const src = joinInside(tplImagesDir, imgName);
-          const dest = joinInside(adDir, imgName);
-          try {
-            if (existsSync(src) && !existsSync(dest)) copyFileSync(src, dest);
-          } catch { /* skip unreadable files */ }
-        }
+      for (const { src, dest } of imageCopies) {
+        try {
+          if (existsSync(src) && !existsSync(dest)) copyFileSync(src, dest);
+        } catch { /* skip unreadable files */ }
       }
     }
 

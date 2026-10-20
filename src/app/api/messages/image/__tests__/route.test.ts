@@ -74,13 +74,74 @@ describe('GET /api/messages/image', () => {
     expect(res.status).toBe(200);
   });
 
-  it('serves the placeholder PNG for a redirect response instead of following it', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(null, { status: 302, headers: { location: 'http://internal.example/secret' } }),
-    );
+  it('rejects non-default ports', async () => {
+    const res = await GET(makeRequest('https://img.kleinanzeigen.de:8443/a.jpg'));
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('follows a redirect that stays on an allowed host', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, { status: 301, headers: { location: 'https://cdn.kleinanzeigen.de/b.jpg' } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([9]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+      );
+    const res = await GET(makeRequest('https://img.kleinanzeigen.de/a.jpg'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://cdn.kleinanzeigen.de/b.jpg');
+  });
+
+  it.each([
+    ['foreign host', 'https://internal.example/secret'],
+    ['downgrade to http', 'http://img.kleinanzeigen.de/b.jpg'],
+    ['non-default port', 'https://img.kleinanzeigen.de:8443/b.jpg'],
+  ])('serves the placeholder and does not follow a redirect to %s', async (_name, location) => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 302, headers: { location } }));
     const res = await GET(makeRequest('https://img.kleinanzeigen.de/a.jpg'));
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/png');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after too many redirects', async () => {
+    fetchMock.mockImplementation(
+      async () => new Response(null, { status: 302, headers: { location: 'https://img.kleinanzeigen.de/loop.jpg' } }),
+    );
+    const res = await GET(makeRequest('https://img.kleinanzeigen.de/a.jpg'));
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it('serves the placeholder for non-image content types', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<html></html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    );
+    const res = await GET(makeRequest('https://img.kleinanzeigen.de/a.jpg'));
+    expect(res.headers.get('content-type')).toBe('image/png');
+  });
+
+  it('serves the placeholder when the declared size exceeds the limit', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { 'content-type': 'image/jpeg', 'content-length': String(50 * 1024 * 1024) },
+      }),
+    );
+    const res = await GET(makeRequest('https://img.kleinanzeigen.de/a.jpg'));
+    expect(res.headers.get('content-type')).toBe('image/png');
+  });
+
+  it('serves the placeholder (not 500) when the upstream fetch fails or times out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetchMock.mockRejectedValue(new DOMException('timed out', 'TimeoutError'));
+    const res = await GET(makeRequest('https://img.kleinanzeigen.de/a.jpg'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

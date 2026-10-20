@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { isSafeSlug } from '@/lib/ads/safe-names';
 
 /**
  * Get the templates directory path for a workspace.
@@ -39,6 +40,8 @@ export function findTemplateFiles(workspace: string): string[] {
  * Prefers directory-based (new format), falls back to flat file (legacy).
  */
 export function findTemplateFile(templatesDir: string, slug: string): string | null {
+  // A slug is a single path segment; anything else must never reach the filesystem.
+  if (!isSafeSlug(slug)) return null;
   const dirBased = path.join(templatesDir, `tpl_${slug}`, `tpl_${slug}.yaml`);
   if (fs.existsSync(dirBased)) return dirBased;
   const flat = path.join(templatesDir, `tpl_${slug}.yaml`);

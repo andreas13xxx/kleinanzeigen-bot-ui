@@ -1,30 +1,64 @@
+import fs from 'fs';
 import path from 'path';
 
-const SLUG_RE = /^[A-Za-z0-9_-]+$/;
-
-/** True if `slug` is a plain template slug (no separators, no dots). */
+/**
+ * True if `slug` is usable as a single path segment: non-empty, no path
+ * separators, no NUL, not a dot segment. Dots, umlauts and spaces stay valid
+ * because legacy/hand-made templates may use them.
+ */
 export function isSafeSlug(slug: string): boolean {
-  return SLUG_RE.test(slug);
+  return (
+    slug.length > 0 &&
+    slug !== '.' &&
+    slug !== '..' &&
+    !slug.includes('\0') &&
+    !slug.includes('/') &&
+    !slug.includes('\\')
+  );
 }
 
-/** True if `name` is a bare file name (no directory parts, no traversal). */
+/** True if `name` is a bare file name on this platform (no directory parts, no traversal). */
 export function isSafeFileName(name: string): boolean {
   return (
     name.length > 0 &&
     name !== '.' &&
     name !== '..' &&
     !name.includes('\0') &&
-    path.basename(name) === name &&
-    path.win32.basename(name) === name
+    path.basename(name) === name
   );
 }
 
-/** Join `name` onto `baseDir`, throwing if the result escapes `baseDir`. */
+function isInside(base: string, target: string): boolean {
+  const rel = path.relative(base, target);
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
+}
+
+/** Real path of the deepest existing ancestor of `p` (resolves symlinks). */
+function realpathOfExistingAncestor(p: string): string {
+  let current = p;
+  for (;;) {
+    try {
+      return fs.realpathSync(current);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return current;
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Join `name` onto `baseDir`, throwing if the result escapes `baseDir`,
+ * either lexically (`..`, absolute names) or through a symlink.
+ */
 export function joinInside(baseDir: string, name: string): string {
   const base = path.resolve(baseDir);
   const full = path.resolve(base, name);
-  if (full !== base && !full.startsWith(base + path.sep)) {
+  if (!isInside(base, full)) {
     throw new Error(`Path escapes base directory: ${name}`);
+  }
+  if (!isInside(realpathOfExistingAncestor(base), realpathOfExistingAncestor(full))) {
+    throw new Error(`Path escapes base directory via symlink: ${name}`);
   }
   return full;
 }
