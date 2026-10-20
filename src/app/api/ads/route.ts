@@ -11,6 +11,7 @@ import { toNFC } from '@/lib/images/normalize';
 import { computeContentHash } from '@/lib/ads/content-hash';
 import { getTemplatesDir } from '@/lib/yaml/templates';
 import { loadCatAttrsData, translateAttrValues } from '@/lib/ads/normalize-attributes';
+import { isSafeSlug, isSafeFileName, joinInside } from '@/lib/ads/safe-names';
 import path from 'path';
 
 const backfilledWorkspaces = new Set<string>();
@@ -147,6 +148,15 @@ export async function POST(request: NextRequest) {
     const ad = parsed.data;
     const ws = user.workspace;
 
+    // Reject path-traversal in template slug / image names before touching the filesystem
+    if (templateSlug !== null && !isSafeSlug(templateSlug)) {
+      return NextResponse.json({ detail: 'Invalid template slug' }, { status: 400 });
+    }
+    const badImage = (ad.images ?? []).find((img) => typeof img !== 'string' || !isSafeFileName(img));
+    if (badImage !== undefined) {
+      return NextResponse.json({ detail: `Invalid image name: ${String(badImage)}` }, { status: 400 });
+    }
+
     // Fill missing contact fields from config ad_defaults
     if (!ad.contact_name || !ad.contact_zipcode || !ad.contact_location) {
       const config = readMergedConfig(ws);
@@ -171,6 +181,21 @@ export async function POST(request: NextRequest) {
     const adsDir = path.join(ws, 'ads');
     const adDir = path.join(adsDir, dirName);
     const filePath = path.join(adDir, filename);
+
+    // Resolve all template-image copy paths up front so a bad path fails the
+    // request (400) before anything is written to disk.
+    const imageCopies: Array<{ src: string; dest: string }> = [];
+    let tplImagesDir = '';
+    if (templateSlug && (ad.images ?? []).length > 0) {
+      try {
+        tplImagesDir = joinInside(getTemplatesDir(ws), `tpl_${templateSlug}`);
+        for (const imgName of ad.images ?? []) {
+          imageCopies.push({ src: joinInside(tplImagesDir, imgName), dest: joinInside(adDir, imgName) });
+        }
+      } catch {
+        return NextResponse.json({ detail: 'Invalid template image path' }, { status: 400 });
+      }
+    }
 
     // Create directory
     const { mkdir } = await import('fs/promises');
@@ -231,17 +256,18 @@ export async function POST(request: NextRequest) {
     await writeAd(filePath, data);
 
     // Copy images from template dir to new ad dir
-    if (templateSlug && (data.images as string[])?.length > 0) {
+    if (imageCopies.length > 0) {
       const { existsSync, copyFileSync } = await import('fs');
-      const tplImagesDir = path.join(getTemplatesDir(ws), `tpl_${templateSlug}`);
-      if (existsSync(tplImagesDir)) {
-        for (const imgName of data.images as string[]) {
-          const src = path.join(tplImagesDir, imgName);
-          const dest = path.join(adDir, imgName);
-          try {
-            if (existsSync(src) && !existsSync(dest)) copyFileSync(src, dest);
-          } catch { /* skip unreadable files */ }
-        }
+      const srcRoot = path.resolve(tplImagesDir) + path.sep;
+      const destRoot = path.resolve(adDir) + path.sep;
+      for (const { src, dest } of imageCopies) {
+        // Defence in depth: re-assert containment right at the sink
+        const srcAbs = path.resolve(src);
+        const destAbs = path.resolve(dest);
+        if (!srcAbs.startsWith(srcRoot) || !destAbs.startsWith(destRoot)) continue;
+        try {
+          if (existsSync(srcAbs) && !existsSync(destAbs)) copyFileSync(srcAbs, destAbs);
+        } catch { /* skip unreadable files */ }
       }
     }
 

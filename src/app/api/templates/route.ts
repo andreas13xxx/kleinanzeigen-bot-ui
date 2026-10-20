@@ -7,6 +7,7 @@ import { getTemplatesDir, findTemplateFiles, slugFromName } from '@/lib/yaml/tem
 import { resolveImageFiles } from '@/lib/images/resolve';
 import { toNFC } from '@/lib/images/normalize';
 import { resolveExistingPath } from '@/lib/fs/resolve-path';
+import { joinInside } from '@/lib/ads/safe-names';
 import path from 'path';
 import fs from 'fs';
 
@@ -80,7 +81,11 @@ export async function POST(request: NextRequest) {
     let resolvedImages: string[] = [];
     let resolvedSourceAdPath: string | null = null;
     if (sourceAdFile && Array.isArray(ad_data.images) && (ad_data.images as string[]).length > 0) {
-      resolvedSourceAdPath = resolveExistingPath(path.join(user.workspace, sourceAdFile));
+      try {
+        resolvedSourceAdPath = resolveExistingPath(joinInside(user.workspace, sourceAdFile));
+      } catch {
+        return NextResponse.json({ detail: 'Invalid source ad file' }, { status: 400 });
+      }
       if (resolvedSourceAdPath) {
         const sourceAdDir = path.dirname(resolvedSourceAdPath);
         resolvedImages = resolveImageFiles(sourceAdDir, ad_data.images as string[]);
@@ -93,11 +98,14 @@ export async function POST(request: NextRequest) {
     if (resolvedImages.length > 0 && resolvedSourceAdPath) {
       const sourceAdDir = path.dirname(resolvedSourceAdPath);
       for (const imgName of resolvedImages) {
-        const src = resolveExistingPath(path.join(sourceAdDir, imgName));
-        const dest = path.join(tplDir, imgName);
         try {
-          if (src) fs.copyFileSync(src, dest);
-        } catch { /* skip unreadable files */ }
+          const src = resolveExistingPath(joinInside(sourceAdDir, imgName));
+          const dest = joinInside(tplDir, imgName);
+          if (src) {
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            fs.copyFileSync(src, dest);
+          }
+        } catch { /* skip unreadable or out-of-tree files */ }
       }
     }
 
