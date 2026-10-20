@@ -130,7 +130,8 @@ export function getNextRun(cronExpr: string): string | undefined {
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }).next().toDate().toISOString();
   } catch (err) {
-    console.warn(`[Scheduler] Cannot compute next run for '${cronExpr}':`, err);
+    // Pass user-controlled text as an argument, never inside the format string.
+    console.warn('[Scheduler] Cannot compute next run for cron expression:', cronExpr, err);
     return undefined;
   }
 }
