@@ -11,6 +11,7 @@ import { toNFC } from '@/lib/images/normalize';
 import { computeContentHash } from '@/lib/ads/content-hash';
 import { getTemplatesDir } from '@/lib/yaml/templates';
 import { loadCatAttrsData, translateAttrValues } from '@/lib/ads/normalize-attributes';
+import { isSafeSlug, isSafeFileName, joinInside } from '@/lib/ads/safe-names';
 import path from 'path';
 
 const backfilledWorkspaces = new Set<string>();
@@ -147,6 +148,15 @@ export async function POST(request: NextRequest) {
     const ad = parsed.data;
     const ws = user.workspace;
 
+    // Reject path-traversal in template slug / image names before touching the filesystem
+    if (templateSlug !== null && !isSafeSlug(templateSlug)) {
+      return NextResponse.json({ detail: 'Invalid template slug' }, { status: 400 });
+    }
+    const badImage = (ad.images ?? []).find((img) => typeof img !== 'string' || !isSafeFileName(img));
+    if (badImage !== undefined) {
+      return NextResponse.json({ detail: `Invalid image name: ${String(badImage)}` }, { status: 400 });
+    }
+
     // Fill missing contact fields from config ad_defaults
     if (!ad.contact_name || !ad.contact_zipcode || !ad.contact_location) {
       const config = readMergedConfig(ws);
@@ -233,11 +243,11 @@ export async function POST(request: NextRequest) {
     // Copy images from template dir to new ad dir
     if (templateSlug && (data.images as string[])?.length > 0) {
       const { existsSync, copyFileSync } = await import('fs');
-      const tplImagesDir = path.join(getTemplatesDir(ws), `tpl_${templateSlug}`);
+      const tplImagesDir = joinInside(getTemplatesDir(ws), `tpl_${templateSlug}`);
       if (existsSync(tplImagesDir)) {
         for (const imgName of data.images as string[]) {
-          const src = path.join(tplImagesDir, imgName);
-          const dest = path.join(adDir, imgName);
+          const src = joinInside(tplImagesDir, imgName);
+          const dest = joinInside(adDir, imgName);
           try {
             if (existsSync(src) && !existsSync(dest)) copyFileSync(src, dest);
           } catch { /* skip unreadable files */ }
