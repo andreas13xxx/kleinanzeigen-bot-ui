@@ -189,6 +189,8 @@ jobs:
             echo
             echo "Update: \`docker compose pull && docker compose up -d\` (see docker/DEPLOYMENT.md)."
             echo
+            echo "Full difference to the original project: [CHANGELOG-FORK.md](https://github.com/${REPO}/blob/${TAG}/CHANGELOG-FORK.md)"
+            echo
           } > notes.md
 
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
