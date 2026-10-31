@@ -30,8 +30,8 @@ export const adminUserUpdateSchema = z.object({
 export const autoPriceReductionSchema = z.object({
   enabled: z.boolean(),
   strategy: z.enum(['PERCENTAGE', 'FIXED']).nullable().optional(),
-  amount: z.number({ invalid_type_error: 'Betrag muss eine Zahl sein' }).nullable().optional(),
-  min_price: z.number({ invalid_type_error: 'Mindestpreis muss eine Zahl sein' }).nullable().optional(),
+  amount: z.number({ error: 'Betrag muss eine Zahl sein' }).nullable().optional(),
+  min_price: z.number({ error: 'Mindestpreis muss eine Zahl sein' }).nullable().optional(),
   delay_reposts: z.number().int().min(0).nullable().optional().default(0),
   delay_days: z.number().int().min(0).nullable().optional().default(0),
   on_update: z.boolean().nullable().optional().default(false),
@@ -48,35 +48,41 @@ const specialAttributesSchema = z.record(
   { message: 'Maximal 50 Einträge erlaubt' }
 );
 
-export const adCreateSchema = z.object({
-  type: z.enum(['OFFER', 'WANTED'], { required_error: 'Angebot/Gesuch ist erforderlich' }),
+// zod 4 dropped required_error/invalid_type_error: a missing value is an issue whose input is undefined.
+const requiredMessage = (message: string) => (issue: { input?: unknown }) =>
+  issue.input === undefined ? message : undefined;
+
+const adCreateBaseSchema = z.object({
+  type: z.enum(['OFFER', 'WANTED'], { error: requiredMessage('Angebot/Gesuch ist erforderlich') }),
   title: z.string().min(10, 'Titel muss mindestens 10 Zeichen haben').max(65, 'Titel darf maximal 65 Zeichen haben'),
   description: z.string().min(10, 'Beschreibung muss mindestens 10 Zeichen haben').max(4000, 'Beschreibung darf maximal 4000 Zeichen haben'),
-  shipping_type: z.enum(['PICKUP', 'SHIPPING', 'NOT_APPLICABLE'], { required_error: 'Versandart ist erforderlich' }),
-  price: z.coerce.number({ required_error: 'Preis ist erforderlich', invalid_type_error: 'Preis muss eine Zahl sein' }).min(0, 'Preis darf nicht negativ sein'),
+  shipping_type: z.enum(['PICKUP', 'SHIPPING', 'NOT_APPLICABLE'], { error: requiredMessage('Versandart ist erforderlich') }),
+  price: z.coerce.number({ error: (issue) => issue.input === undefined ? 'Preis ist erforderlich' : 'Preis muss eine Zahl sein' }).min(0, 'Preis darf nicht negativ sein'),
   contact_name: z.string().min(1, 'Name darf nicht leer sein').optional(),
   contact_zipcode: z.string().min(1, 'PLZ darf nicht leer sein').optional(),
   contact_location: z.string().min(1, 'Ort darf nicht leer sein').optional(),
-  category: z.string({ required_error: 'Kategorie ist erforderlich' }).min(1, 'Kategorie darf nicht leer sein'),
+  category: z.string({ error: requiredMessage('Kategorie ist erforderlich') }).min(1, 'Kategorie darf nicht leer sein'),
   price_type: z.enum(['FIXED', 'NEGOTIABLE', 'GIVE_AWAY']).default('NEGOTIABLE'),
-  shipping_costs: z.coerce.number({ invalid_type_error: 'Versandkosten müssen eine Zahl sein' }).positive('Versandkosten müssen positiv sein').nullable().optional(),
+  shipping_costs: z.coerce.number({ error: 'Versandkosten müssen eine Zahl sein' }).positive('Versandkosten müssen positiv sein').nullable().optional(),
   shipping_options: z.array(z.string()).nullable().optional().default([]),
   sell_directly: z.boolean().nullable().optional().default(false),
   images: z.array(z.string()).max(MAX_AD_IMAGES, `Maximal ${MAX_AD_IMAGES} Bilder pro Anzeige`).nullable().optional().default([]),
   contact_street: z.string().nullable().optional().default(''),
   contact_phone: z.string().nullable().optional().default(''),
-  republication_interval: z.number({ invalid_type_error: 'Intervall muss eine Zahl sein' }).int().positive('Intervall muss positiv sein').nullable().optional(),
+  republication_interval: z.number({ error: 'Intervall muss eine Zahl sein' }).int().positive('Intervall muss positiv sein').nullable().optional(),
   active: z.boolean().nullable().optional().default(true),
   description_prefix: z.string().max(500, 'Präfix darf maximal 500 Zeichen haben').nullable().optional().default(''),
   description_suffix: z.string().max(500, 'Suffix darf maximal 500 Zeichen haben').nullable().optional().default(''),
   special_attributes: specialAttributesSchema.nullable().optional().default({}),
   auto_price_reduction: autoPriceReductionSchema.nullable().optional(),
-}).superRefine((data, ctx) => {
+});
+
+export const adCreateSchema = adCreateBaseSchema.superRefine((data, ctx) => {
   if (data.shipping_type === 'SHIPPING') {
     const hasOptions = data.shipping_options && data.shipping_options.length > 0;
     if (!hasOptions) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Bitte wähle eine Versandoption (Paketgröße)',
         path: ['shipping_options'],
       });
@@ -89,12 +95,11 @@ export const adCreateSchema = z.object({
   if (data.sell_directly) {
     const check = checkSellDirectly(data);
     if (!check.ok) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: check.reason, path: ['sell_directly'] });
+      ctx.addIssue({ code: 'custom', message: check.reason, path: ['sell_directly'] });
     }
   }
 });
 
-const adCreateBaseSchema = adCreateSchema.innerType();
 export const adUpdateSchema = adCreateBaseSchema.partial();
 
 // Bot schemas
@@ -140,21 +145,21 @@ export const setupSchema = z.object({
 
 // Config schema
 export const configUpdateSchema = z.object({
-  ad_defaults: z.record(z.unknown()).optional(),
-  publishing: z.record(z.unknown()).optional(),
+  ad_defaults: z.record(z.string(), z.unknown()).optional(),
+  publishing: z.record(z.string(), z.unknown()).optional(),
   deleting: z.object({
     after_delete: z.enum(['NONE', 'RESET', 'DISABLE']),
   }).optional(),
-  timeouts: z.record(z.unknown()).optional(),
-  download: z.record(z.unknown()).optional(),
-  update_check: z.record(z.unknown()).optional(),
-  ai: z.record(z.unknown()).optional(),
-  diagnostics: z.record(z.unknown()).optional(),
-  login: z.record(z.unknown()).optional(),
-  browser: z.record(z.unknown()).optional(),
+  timeouts: z.record(z.string(), z.unknown()).optional(),
+  download: z.record(z.string(), z.unknown()).optional(),
+  update_check: z.record(z.string(), z.unknown()).optional(),
+  ai: z.record(z.string(), z.unknown()).optional(),
+  diagnostics: z.record(z.string(), z.unknown()).optional(),
+  login: z.record(z.string(), z.unknown()).optional(),
+  browser: z.record(z.string(), z.unknown()).optional(),
   // Human-like browser pacing (typing jitter, action delays, viewport randomization).
   // Upstream ships sane defaults; kept optional here so a hand-edited block survives GUI writes.
-  humanization: z.record(z.unknown()).optional(),
+  humanization: z.record(z.string(), z.unknown()).optional(),
 });
 
 // Template schemas
@@ -162,14 +167,14 @@ export const templateCreateSchema = z.object({
   name: z.string().min(1, 'Name erforderlich'),
   description: z.string().default(''),
   locked_fields: z.array(z.string()).default([]),
-  ad_data: z.record(z.unknown()),
+  ad_data: z.record(z.string(), z.unknown()),
 });
 
 export const templateUpdateSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   locked_fields: z.array(z.string()).optional(),
-  ad_data: z.record(z.unknown()).optional(),
+  ad_data: z.record(z.string(), z.unknown()).optional(),
 });
 
 // AI generation schema
