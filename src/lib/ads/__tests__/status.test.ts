@@ -105,6 +105,13 @@ describe('isExpired', () => {
     expect(isExpired(ad)).toBe(false);
   });
 
+  it('returns false when confirmed online even if the dates are older than 60 days', () => {
+    vi.useFakeTimers({ now: new Date('2026-04-01T00:00:00Z') });
+    const ad = makeAd({ id: 123, updated_on: '2026-01-01T00:00:00Z', is_online: true });
+    expect(isExpired(ad)).toBe(false);
+    expect(getStatusLabel(ad)).toBe('Aktiv');
+  });
+
   it('returns true exactly at 60 days', () => {
     vi.useFakeTimers({ now: new Date('2026-03-02T00:00:00Z') });
     const ad = makeAd({ id: 123, updated_on: '2026-01-01T00:00:00Z' });
