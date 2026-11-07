@@ -38,9 +38,13 @@ export function getExpiryDate(ad: AdListItem): Date | null {
   return new Date(base.getTime() + AD_LIFETIME_DAYS * DAY_MS);
 }
 
-/** True when the ad is past its 60-day platform lifetime. */
+/**
+ * True when the ad is past its 60-day platform lifetime.
+ * Ads confirmed online by the last download listing are never expired: downloaded
+ * ads often carry their original created_on/updated_on, which would falsely read as >60 days.
+ */
 export function isExpired(ad: AdListItem): boolean {
-  if (!ad.id) return false;
+  if (!ad.id || ad.is_online) return false;
   const expiry = getExpiryDate(ad);
   if (!expiry) return false;
   return expiry.getTime() <= Date.now();

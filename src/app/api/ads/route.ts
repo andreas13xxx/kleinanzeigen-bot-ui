@@ -85,6 +85,7 @@ export async function GET(request: NextRequest) {
         has_description: Boolean(ad.description),
         is_changed: isChanged,
         is_orphaned: onlineIds !== null && ad.id != null && !onlineIds.has(ad.id as number),
+        is_online: onlineIds !== null && ad.id != null && onlineIds.has(ad.id as number),
         is_archived: filePath.startsWith(archiveDir + path.sep),
         file: toNFC(path.relative(ws, filePath)),
       });

@@ -69,6 +69,8 @@ export interface AdListItem {
   has_description: boolean;
   is_changed: boolean;
   is_orphaned: boolean;
+  /** True when the ID is in the last full download listing (confirmed online); undefined/false = unknown. */
+  is_online?: boolean;
   is_archived: boolean;
   file: string;
 }
