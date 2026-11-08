@@ -25,8 +25,10 @@ COPY --from=node-source /usr/local/bin/node /usr/local/bin/node
 
 ARG TARGETARCH
 
-# Install Chromium, curl, and fonts
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install Chromium, curl, and fonts.
+# "upgrade" first: packages preinstalled in the base image (e.g. zlib1g) are not touched by
+# "install" and can lag behind the security repo; the CI scan fails on fixable HIGH/CRITICAL.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
     ca-certificates \
     chromium \
     curl \
