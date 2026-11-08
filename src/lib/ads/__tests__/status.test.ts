@@ -78,6 +78,50 @@ describe('getExpiryDate', () => {
   });
 });
 
+describe('real end date (adStats.expires_at)', () => {
+  afterEach(() => vi.useRealTimers());
+  const stats = (expires_at: string | null) => ({ views: 0, watchlist: 0, replies: 0, state: 'active', activated_at: null, expires_at });
+  // Old dates (would read as expiring/expired by the 60-day estimate)
+  const old = { id: 1, updated_on: '2026-09-10T00:00:00Z' };
+
+  it('renewed ad: not expiring soon when the real end date is far away', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-08T12:00:00Z') }); // estimate: Nov 9 -> expiring soon
+    expect(isExpiringSoon(makeAd(old))).toBe(true);
+    expect(isExpiringSoon(makeAd(old), stats('09.01.2027'))).toBe(false);
+    expect(getStatusLabel(makeAd(old), stats('09.01.2027'))).toBe('Aktiv');
+  });
+
+  it('expiring soon when the real end date is within 7 days', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-08T12:00:00Z') });
+    const ad = makeAd({ id: 1, updated_on: '2026-11-01T00:00:00Z' });
+    expect(isExpiringSoon(ad, stats('12.11.2026'))).toBe(true);
+    expect(getExpiryDaysLeft(ad, stats('12.11.2026'))).toBe(5);
+  });
+
+  it('expired when the real end date is in the past, even if online-confirmed', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-08T12:00:00Z') });
+    const ad = makeAd({ id: 1, is_online: true, updated_on: '2026-11-01T00:00:00Z' });
+    expect(isExpired(ad, stats('01.11.2026'))).toBe(true);
+  });
+
+  it('last valid day is not expired yet', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-08T12:00:00Z') });
+    expect(isExpired(makeAd({ id: 1 }), stats('08.11.2026'))).toBe(false);
+  });
+
+  it('online-confirmed ad without a real end date is never flagged expiring soon', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-08T12:00:00Z') });
+    expect(isExpiringSoon(makeAd({ ...old, is_online: true }))).toBe(false);
+    expect(isExpiringSoon(makeAd({ ...old, is_online: true }), stats(null))).toBe(false);
+  });
+
+  it('falls back to the 60-day estimate for offline ads without stats; ignores malformed dates', () => {
+    vi.useFakeTimers({ now: new Date('2026-11-08T12:00:00Z') });
+    expect(isExpiringSoon(makeAd(old))).toBe(true);
+    expect(isExpiringSoon(makeAd(old), stats('kaputt'))).toBe(true);
+  });
+});
+
 describe('isExpired', () => {
   afterEach(() => vi.useRealTimers());
 

@@ -6,6 +6,7 @@ import type { AdListItem } from '@/types/ad';
 import { isExpiringSoon } from '@/lib/ads/status';
 import { getCurrentPrice } from '@/lib/ads/pricing';
 import { useCountUp } from '@/hooks/useCountUp';
+import { useAdStats } from '@/hooks/useAdStats';
 import styles from './StatsGrid.module.scss';
 
 interface StatsGridProps {
@@ -60,6 +61,7 @@ function StatCard({ stat, index }: { stat: StatItem; index: number }) {
 }
 
 export const StatsGrid = memo(function StatsGrid({ ads }: StatsGridProps) {
+  const { data: statsData } = useAdStats();
   const stats = useMemo((): StatItem[] => {
     const online = ads.filter((a) => !!a.id).length;
     const local = ads.filter((a) => !a.id).length;
@@ -85,7 +87,7 @@ export const StatsGrid = memo(function StatsGrid({ ads }: StatsGridProps) {
 
     const inactive = ads.filter((a) => a.active === false).length;
     const orphaned = ads.filter((a) => a.is_orphaned).length;
-    const expiringSoon = ads.filter((a) => isExpiringSoon(a)).length;
+    const expiringSoon = ads.filter((a) => isExpiringSoon(a, a.id ? statsData?.ads[String(a.id)] : undefined)).length;
 
     // Price at minimum
     const aprAds = ads.filter(
@@ -114,7 +116,7 @@ export const StatsGrid = memo(function StatsGrid({ ads }: StatsGridProps) {
       { num: atMin, num2: aprAds.length, value: `${atMin} / ${aprAds.length}`, label: 'Preis am Minimum' },
       { num: avgInterval, suffix: ' Tage', value: `${avgInterval} Tage`, label: 'Ø Republizierung' },
     ];
-  }, [ads]);
+  }, [ads, statsData]);
 
   return (
     <div className={styles.grid}>
