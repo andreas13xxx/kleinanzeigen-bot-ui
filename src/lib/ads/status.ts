@@ -26,11 +26,22 @@ export function getNextRepubDate(ad: AdListItem): Date | null {
   return new Date(base.getTime() + ad.republication_interval * DAY_MS);
 }
 
+function parseEndDate(dmy: string | null | undefined): Date | null {
+  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(dmy ?? '');
+  if (!m) return null;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]) + 1); // start of the next day
+  return isNaN(d.getTime()) ? null : d;
+}
+
 /**
  * Calculate the platform expiry date (60 days after last publish/update).
  * This is when kleinanzeigen.de automatically removes the ad.
  */
-export function getExpiryDate(ad: AdListItem): Date | null {
+export function getExpiryDate(ad: AdListItem, adStats?: AdStatsEntry): Date | null {
+  // Real end date from the Kleinanzeigen management API (DD.MM.YYYY, valid through that day).
+  // It reflects renewals done on kleinanzeigen.de, which never touch updated_on/created_on.
+  const real = parseEndDate(adStats?.expires_at);
+  if (real) return real;
   const baseDate = ad.updated_on || ad.created_on;
   if (!baseDate) return null;
   const base = new Date(baseDate);
@@ -43,17 +54,23 @@ export function getExpiryDate(ad: AdListItem): Date | null {
  * Ads confirmed online by the last download listing are never expired: downloaded
  * ads often carry their original created_on/updated_on, which would falsely read as >60 days.
  */
-export function isExpired(ad: AdListItem): boolean {
-  if (!ad.id || ad.is_online) return false;
-  const expiry = getExpiryDate(ad);
+export function isExpired(ad: AdListItem, adStats?: AdStatsEntry): boolean {
+  if (!ad.id) return false;
+  if (ad.is_online && !adStats?.expires_at) return false;
+  const expiry = getExpiryDate(ad, adStats);
   if (!expiry) return false;
   return expiry.getTime() <= Date.now();
 }
 
-/** True when the ad is within EXPIRY_WARNING_DAYS of the 60-day platform limit. */
-export function isExpiringSoon(ad: AdListItem): boolean {
+/**
+ * True when the ad is within EXPIRY_WARNING_DAYS of its expiry. Uses the real end date when known.
+ * Without it, an online-confirmed ad is not flagged: the date derived from updated_on/created_on
+ * is stale after a renewal on kleinanzeigen.de.
+ */
+export function isExpiringSoon(ad: AdListItem, adStats?: AdStatsEntry): boolean {
   if (!ad.id) return false;
-  const expiry = getExpiryDate(ad);
+  if (ad.is_online && !adStats?.expires_at) return false;
+  const expiry = getExpiryDate(ad, adStats);
   if (!expiry) return false;
   const remaining = expiry.getTime() - Date.now();
   return remaining > 0 && remaining <= EXPIRY_WARNING_DAYS * DAY_MS;
@@ -65,8 +82,8 @@ export function isReserved(ad: AdListItem, adStats?: AdStatsEntry): boolean {
 }
 
 /** Days remaining until the 60-day platform expiry (negative = overdue). */
-export function getExpiryDaysLeft(ad: AdListItem): number {
-  const expiry = getExpiryDate(ad);
+export function getExpiryDaysLeft(ad: AdListItem, adStats?: AdStatsEntry): number {
+  const expiry = getExpiryDate(ad, adStats);
   if (!expiry) return 0;
   return Math.ceil((expiry.getTime() - Date.now()) / DAY_MS);
 }
@@ -88,8 +105,8 @@ export function getStatusLabel(ad: AdListItem, adStats?: AdStatsEntry): AdStatus
   // hides the delete action for orphaned ads.
   if (ad.is_orphaned) return 'Verwaist';
   if (ad.active === false || ad.is_archived) return 'Inaktiv';
-  if (isExpired(ad)) return 'Abgelaufen';
-  if (isExpiringSoon(ad)) return 'Läuft bald ab';
+  if (isExpired(ad, adStats)) return 'Abgelaufen';
+  if (isExpiringSoon(ad, adStats)) return 'Läuft bald ab';
   if (ad.is_changed) return 'Geändert';
   return 'Aktiv';
 }

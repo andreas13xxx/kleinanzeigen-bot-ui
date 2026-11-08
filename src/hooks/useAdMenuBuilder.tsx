@@ -7,6 +7,7 @@ import { useToast, showConfirm } from '@/components/ui';
 import type { DropdownMenuItem } from '@/components/ui';
 import { api } from '@/lib/api/client';
 import { useAds, useUpdateAdByFile } from '@/hooks/useAds';
+import { useAdStats } from '@/hooks/useAdStats';
 import type { AdListItem } from '@/types/ad';
 import type { Job } from '@/types/bot';
 import { isExpired, isExpiringSoon, liveDeleteAvailability } from '@/lib/ads/status';
@@ -52,6 +53,7 @@ export function useAdMenuBuilder({ onSaveAsTemplate }: AdMenuOptions): (ad: AdLi
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: allAdsData } = useAds();
+  const { data: statsData } = useAdStats();
   const updateByFile = useUpdateAdByFile();
 
   const refreshAds = useCallback(() => {
@@ -102,7 +104,8 @@ export function useAdMenuBuilder({ onSaveAsTemplate }: AdMenuOptions): (ad: AdLi
     ];
     if (ad.id) {
       items.push({ label: 'Aktualisieren', icon: <Icon paths={ICONS.Aktualisieren} />, onClick: () => runBotCommand('/api/bot/update', String(ad.id), 'Aktualisierung gestartet', 'Fehler beim Aktualisieren') });
-      if (isExpiringSoon(ad) || isExpired(ad)) {
+      const adStats = statsData?.ads[String(ad.id)];
+      if (isExpiringSoon(ad, adStats) || isExpired(ad, adStats)) {
         items.push({ label: 'Verlängern', icon: <Icon paths={ICONS.Verlängern} />, onClick: () => runBotCommand('/api/bot/extend', String(ad.id), 'Verlängerung gestartet', 'Fehler beim Verlängern') });
       }
     }
@@ -131,5 +134,5 @@ export function useAdMenuBuilder({ onSaveAsTemplate }: AdMenuOptions): (ad: AdLi
       } });
     }
     return items;
-  }, [router, allAdsData, updateByFile, toast, refreshAds, runBotCommand, onSaveAsTemplate]);
+  }, [router, allAdsData, updateByFile, toast, refreshAds, runBotCommand, onSaveAsTemplate, statsData]);
 }
