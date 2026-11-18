@@ -241,12 +241,12 @@ export function AdTable({ ads, selectedFiles, onSelect, selectMode = false, sort
           {sortedAds.map((ad, i) => {
             const isDraft = !ad.id && !ad.is_archived;
             const isSelected = selectedFiles.has(ad.file);
-            const expiring = isExpiringSoon(ad);
-            const expired = isExpired(ad);
+            const adStats = ad.id ? statsData?.ads[String(ad.id)] : undefined;
+            const expiring = isExpiringSoon(ad, adStats);
+            const expired = isExpired(ad, adStats);
             const imageUrl = ad.first_image && ad.file
               ? `/api/images/file?file=${encodeURIComponent(ad.file)}&name=${encodeURIComponent(ad.first_image)}`
               : null;
-            const adStats = ad.id ? statsData?.ads[String(ad.id)] : undefined;
 
             const rowCls = [
               styles.row,

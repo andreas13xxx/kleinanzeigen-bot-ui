@@ -5,7 +5,7 @@ import { useFormContext } from 'react-hook-form';
 import { Select, Toggle, Input, Button } from '@/components/ui';
 import { InfoTip } from './InfoTip';
 import type { AdCreateInput } from '@/validation/schemas';
-import { resolveAttributes, getLabel, shortKey, INPUT_COMBOBOX_KEYS } from '@/lib/ads/category-attributes';
+import { resolveAttributes, getLabel, shortKey, isOptionalAttr, setAttrValue, INPUT_COMBOBOX_KEYS } from '@/lib/ads/category-attributes';
 import type { ResolvedAttribute } from '@/lib/ads/category-attributes';
 import { loadAttributeData } from '@/lib/ads/category-attributes-client';
 import type { ClientCatAttrsData } from '@/lib/ads/category-attributes-client';
@@ -46,7 +46,7 @@ export function CategoryAttributesPicker({ category, values, onChange }: Categor
 
   // Always store with short key so saved YAML and loaded YAML use the same format
   const handleChange = useCallback((key: string, val: string | number | boolean) => {
-    onChange({ ...values, [shortKey(key)]: String(val) });
+    onChange(setAttrValue(values, key, String(val)));
   }, [values, onChange]);
 
   // Look up value by full key or short key (handles both newly set and YAML-loaded values)
@@ -55,6 +55,7 @@ export function CategoryAttributesPicker({ category, values, onChange }: Categor
   }, [values]);
 
   const nonBoolAttrs = useMemo(() => attrs.filter((a) => a.type !== 'boolean'), [attrs]);
+  const requiredAttrs = useMemo(() => nonBoolAttrs.filter((a) => !isOptionalAttr(a.key)), [nonBoolAttrs]);
   const boolAttrs = useMemo(() => attrs.filter((a) => a.type === 'boolean'), [attrs]);
 
   // SoT enforcement (client side): drop attribute keys that aren't valid for this category.
@@ -78,8 +79,8 @@ export function CategoryAttributesPicker({ category, values, onChange }: Categor
 
   // Validate required attrs and sync with form error state
   useEffect(() => {
-    if (nonBoolAttrs.length === 0) { clearErrors('special_attributes'); return; }
-    const hasMissing = nonBoolAttrs.some((attr) => {
+    if (requiredAttrs.length === 0) { clearErrors('special_attributes'); return; }
+    const hasMissing = requiredAttrs.some((attr) => {
       if (attr.type === 'month-year') return isEmpty(getVal(attr.key) as string) || isEmpty(getVal(attr.yearKey!) as string);
       return isEmpty(getVal(attr.key) as string);
     });
@@ -88,7 +89,7 @@ export function CategoryAttributesPicker({ category, values, onChange }: Categor
     } else {
       clearErrors('special_attributes');
     }
-  }, [getVal, nonBoolAttrs, setError, clearErrors]);
+  }, [getVal, requiredAttrs, setError, clearErrors]);
 
   if (!data || attrs.length === 0) {
     return <KvEditor entries={values} onChange={onChange} />;
@@ -105,18 +106,19 @@ export function CategoryAttributesPicker({ category, values, onChange }: Categor
             // Text-search combobox fields (brand_s, marke_s) store display text in YAML.
             // Use o.text as option value so the stored value matches the select option.
             const useDisplayText = INPUT_COMBOBOX_KEYS.has(shortKey(attr.key));
+            const optional = isOptionalAttr(attr.key);
             return (
               <Select
                 key={attr.key}
-                label={attr.label}
-                required
+                label={optional ? `${attr.label} (optional)` : attr.label}
+                required={!optional}
                 options={[
                   { value: '', label: 'Bitte wählen' },
                   ...attr.options.map((o) => ({ value: useDisplayText ? o.text : o.value, label: o.text })),
                 ]}
                 value={String(getVal(attr.key) ?? '')}
                 onChange={(e) => handleChange(attr.key, e.target.value)}
-                error={wasSubmitted && isEmpty(getVal(attr.key) as string) ? 'Pflichtfeld' : undefined}
+                error={!optional && wasSubmitted && isEmpty(getVal(attr.key) as string) ? 'Pflichtfeld' : undefined}
               />
             );
           }

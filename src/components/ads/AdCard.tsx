@@ -56,8 +56,8 @@ export function AdCard({ ad, selected = false, onSelect, selectMode = false, sty
   const buildMenuItems = useAdMenuBuilder({ onSaveAsTemplate: handleSaveAsTemplate });
 
   const isDraft = !ad.id && !ad.is_archived;
-  const expiring = isExpiringSoon(ad);
-  const expired = isExpired(ad);
+  const expiring = isExpiringSoon(ad, adStats);
+  const expired = isExpired(ad, adStats);
 
   const imageUrl = ad.first_image && ad.file
     ? `/api/images/file?file=${encodeURIComponent(ad.file)}&name=${encodeURIComponent(ad.first_image)}`
@@ -199,7 +199,7 @@ export function AdCard({ ad, selected = false, onSelect, selectMode = false, sty
         {/* Expiry countdown (only when not yet expired — badge already shows "Abgelaufen") */}
         {expiring && !expired && ad.created_on && (
           <div className={styles.cardExpiry}>
-            Noch {getExpiryDaysLeft(ad)} Tag{getExpiryDaysLeft(ad) !== 1 ? 'e' : ''} bis Ablauf
+            Noch {getExpiryDaysLeft(ad, adStats)} Tag{getExpiryDaysLeft(ad, adStats) !== 1 ? 'e' : ''} bis Ablauf
           </div>
         )}
 

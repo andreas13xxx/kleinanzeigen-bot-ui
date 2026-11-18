@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveAttributes } from '../category-attributes';
+import { resolveAttributes, isOptionalAttr, setAttrValue } from '../category-attributes';
 import type { CategoryEntry, SharedAttributeDef } from '../category-attributes';
 
 function makeShared(opts: string[]): SharedAttributeDef {
@@ -98,5 +98,36 @@ describe('resolveAttributes', () => {
     expect(result).toHaveLength(2);
     expect(result.map((a) => a.key)).toContain('pferde.art_s');
     expect(result.map((a) => a.key)).toContain('farbe_s');
+  });
+});
+
+describe('isOptionalAttr', () => {
+  it('treats only condition_s as optional (also with category prefix)', () => {
+    expect(isOptionalAttr('condition_s')).toBe(true);
+    expect(isOptionalAttr('kleidung.condition_s')).toBe(true);
+    expect(isOptionalAttr('art_s')).toBe(false);
+    expect(isOptionalAttr('brand_s')).toBe(false);
+  });
+});
+
+describe('setAttrValue', () => {
+  it('sets a value under the short key', () => {
+    expect(setAttrValue({ art_s: 'a' }, 'cat.condition_s', 'ok')).toEqual({ art_s: 'a', condition_s: 'ok' });
+  });
+
+  it('removes the key on empty value instead of writing an empty string', () => {
+    const next = setAttrValue({ art_s: 'a', condition_s: 'ok' }, 'condition_s', '');
+    expect(next).toEqual({ art_s: 'a' });
+    expect('condition_s' in next).toBe(false);
+  });
+
+  it('removes both full and short key forms and does not mutate the input', () => {
+    const input = { 'cat.condition_s': 'ok', condition_s: 'ok' };
+    expect(setAttrValue(input, 'cat.condition_s', '')).toEqual({});
+    expect(input).toEqual({ 'cat.condition_s': 'ok', condition_s: 'ok' });
+  });
+
+  it('does not add a key when clearing an unset attribute', () => {
+    expect(setAttrValue({}, 'condition_s', '')).toEqual({});
   });
 });

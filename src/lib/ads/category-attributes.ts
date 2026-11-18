@@ -66,6 +66,27 @@ export function shortKey(key: string): string {
   return k.replace(/__v\d+$/, '');
 }
 
+// Attributes Kleinanzeigen does not require in every category (e.g. condition). If unset the key
+// is left out of special_attributes, so the bot skips it. shortcut: static list, extend per key
+// only after checking how the bot handles a missing key.
+const OPTIONAL_ATTR_KEYS = new Set(['condition_s']);
+
+export function isOptionalAttr(key: string): boolean {
+  return OPTIONAL_ATTR_KEYS.has(shortKey(key));
+}
+
+/** Set a value in an attribute map; an empty value removes the key (never writes '' to the YAML). */
+export function setAttrValue(values: Record<string, string>, key: string, val: string): Record<string, string> {
+  const next = { ...values };
+  if (val === '') {
+    delete next[key];
+    delete next[shortKey(key)];
+  } else {
+    next[shortKey(key)] = val;
+  }
+  return next;
+}
+
 export function resolveAttributes(
   entry: CategoryEntry,
   shared: Record<string, SharedAttributeDef>,

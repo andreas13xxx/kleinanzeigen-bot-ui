@@ -27,7 +27,11 @@ warn()    { echo -e "${YELLOW}⚠${RESET} $*"; }
 error()   { echo -e "${RED}✗ $*${RESET}"; exit 1; }
 step()    { echo -e "\n${CYAN}${BOLD}[$1/$TOTAL_STEPS] $2${RESET}"; }
 
-REPO_URL="https://github.com/bkd3sign/kleinanzeigen-bot-ui"
+# Override with KA_REPO_URL to track another repo (e.g. upstream bkd3sign/kleinanzeigen-bot-ui).
+REPO_URL="${KA_REPO_URL:-https://github.com/andreas13xxx/kleinanzeigen-bot-ui}"
+UPSTREAM_SLUG="bkd3sign/kleinanzeigen-bot-ui"
+repo_slug() { local u="${1%.git}"; u="${u%/}"; echo "${u#*github.com[/:]}"; }
+REPO_SLUG="$(repo_slug "$REPO_URL")"
 # Bumped whenever the --update/provisioning logic changes. Enables single-command
 # self-update: --update re-execs the freshly pulled installer when this rev differs.
 INSTALLER_REV=2
@@ -437,6 +441,14 @@ git_update_or_abort() {
   fi
 }
 
+# Fork releases are tagged vX.Y.Z-forkN while package.json stays at X.Y.Z, so on a fork the
+# update check compares the latest release tag with the newest local tag instead.
+# Prints the latest remote tag; empty (rc 1) on network/API failure.
+fork_latest_tag() {
+  curl --max-time 10 -fsSL "https://api.github.com/repos/$1/releases/latest" 2>/dev/null \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null
+}
+
 # True if the full VNC topology is already provisioned (used by --update to decide
 # whether an up-to-date install still needs a one-time VNC migration).
 vnc_stack_present() {
@@ -482,6 +494,11 @@ if [[ "$UPDATE_MODE" == "true" ]]; then
     fi
   fi
   [[ ! -d "$INSTALL_DIR/.git" ]] && error "No installation found at $INSTALL_DIR — run without --update first"
+  # Without KA_REPO_URL, follow the repo this install was cloned from (git pull uses it too).
+  if [[ -z "${KA_REPO_URL:-}" ]]; then
+    ORIGIN_URL=$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || echo "")
+    [[ "$ORIGIN_URL" == *github.com* ]] && REPO_SLUG="$(repo_slug "$ORIGIN_URL")"
+  fi
   NODE_BIN=$(command -v node 2>/dev/null) || error "Node.js not found — run full installer first"
 
   # Derive service parameters from the existing unit so the VNC migration keeps
@@ -531,8 +548,17 @@ if [[ "$UPDATE_MODE" == "true" ]]; then
   LOCAL_VERSION=$(git -C "$INSTALL_DIR" show HEAD:package.json 2>/dev/null \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null || \
     python3 -c "import json; print(json.load(open('$INSTALL_DIR/package.json'))['version'])" 2>/dev/null || echo "")
-  REMOTE_VERSION=$(curl --max-time 10 -fsSL "https://raw.githubusercontent.com/bkd3sign/kleinanzeigen-bot-ui/main/package.json" 2>/dev/null \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
+  if [[ "$REPO_SLUG" != "$UPSTREAM_SLUG" ]]; then
+    # Fork: compare release tags (package.json is not bumped per fork release)
+    git -C "$INSTALL_DIR" fetch --tags --quiet origin 2>/dev/null || true
+    LOCAL_VERSION=$(git -C "$INSTALL_DIR" describe --tags --abbrev=0 2>/dev/null || echo "")
+    REMOTE_VERSION=$(fork_latest_tag "$REPO_SLUG" || echo "")
+    LOCAL_VERSION="${LOCAL_VERSION#v}"; REMOTE_VERSION="${REMOTE_VERSION#v}"
+    [[ -z "$REMOTE_VERSION" ]] && warn "No release tag found for $REPO_SLUG (API unreachable or no releases)"
+  else
+    REMOTE_VERSION=$(curl --max-time 10 -fsSL "https://raw.githubusercontent.com/$REPO_SLUG/main/package.json" 2>/dev/null \
+      | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
+  fi
 
   NEEDS_PULL=true
   if [[ -z "$LOCAL_VERSION" ]]; then
@@ -1076,7 +1102,7 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
   LOCAL_VERSION=$(git -C "$INSTALL_DIR" show HEAD:package.json 2>/dev/null \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null || \
     python3 -c "import json; print(json.load(open('$INSTALL_DIR/package.json'))['version'])" 2>/dev/null || echo "")
-  REMOTE_VERSION=$(curl --max-time 10 -fsSL "https://raw.githubusercontent.com/bkd3sign/kleinanzeigen-bot-ui/main/package.json" 2>/dev/null \
+  REMOTE_VERSION=$(curl --max-time 10 -fsSL "https://raw.githubusercontent.com/$REPO_SLUG/main/package.json" 2>/dev/null \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
   if [[ -n "$LOCAL_VERSION" && -n "$REMOTE_VERSION" && "$LOCAL_VERSION" == "$REMOTE_VERSION" ]]; then
     info "Already on latest version (v${LOCAL_VERSION}) — using existing source"
