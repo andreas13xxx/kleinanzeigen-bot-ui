@@ -367,7 +367,19 @@ export async function runBotCommand(
     proc.stdout?.on('data', processData);
     proc.stderr?.on('data', processData);
 
-    proc.on('close', (code) => {
+    // 'close' only fires after ALL stdio pipes are closed. A Chromium the bot spawned inherits
+    // them and can outlive the bot, so the job would hang after the bot's last log line.
+    // 'exit' fires when the bot itself ends: give the pipes a short moment to drain, then
+    // finalize anyway (the process-group kill below closes the pipes).
+    let finalized = false;
+    proc.on('exit', (code) => {
+      setTimeout(() => finalize(code), 3000);
+    });
+    proc.on('close', (code) => finalize(code));
+
+    function finalize(code: number | null): void {
+      if (finalized) return;
+      finalized = true;
       if (tabFocusTimer) clearInterval(tabFocusTimer);
       // Flush any incomplete line that had no trailing newline
       if (pendingLine && !truncated) {
@@ -419,7 +431,7 @@ export async function runBotCommand(
         try { process.kill(-pid, 'SIGTERM'); } catch { /* already gone */ }
         setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch { /* already gone */ } }, 2500);
       }
-    });
+    }
 
     proc.on('error', (err) => {
       if (tabFocusTimer) clearInterval(tabFocusTimer);
