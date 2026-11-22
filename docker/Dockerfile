@@ -28,7 +28,9 @@ ARG TARGETARCH
 # Install Chromium, curl, and fonts.
 # "upgrade" first: packages preinstalled in the base image (e.g. zlib1g) are not touched by
 # "install" and can lag behind the security repo; the CI scan fails on fixable HIGH/CRITICAL.
-RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
+# APT_CACHE_BUST: CI passes the current date so a cached layer cannot hide new security updates.
+ARG APT_CACHE_BUST=none
+RUN echo "apt cache bust: ${APT_CACHE_BUST}" && apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
     ca-certificates \
     chromium \
     curl \

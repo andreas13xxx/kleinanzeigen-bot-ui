@@ -64,6 +64,10 @@ jobs:
         # The Dockerfile COPYs these two from the context root (flat NAS export layout).
         run: cp docker/entrypoint.sh docker/nginx.conf .
 
+      - name: Date for apt cache bust
+        id: day
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       - name: Build (amd64, not pushed)
         uses: docker/build-push-action@v7
         with:
@@ -73,6 +77,8 @@ jobs:
           load: true
           push: false
           tags: kleinanzeigen-bot-ui:ci
+          build-args: |
+            APT_CACHE_BUST=${{ steps.day.outputs.date }}
           cache-from: type=gha,scope=ci
           cache-to: type=gha,mode=max,scope=ci
 

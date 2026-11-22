@@ -101,6 +101,10 @@ jobs:
 
       # Build once for amd64 and scan BEFORE anything is pushed, so a vulnerable image never
       # reaches the registry. The push step below reuses the build cache.
+      - name: Date for apt cache bust
+        id: day
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       - name: Build (amd64) for scan
         uses: docker/build-push-action@v7
         with:
@@ -113,6 +117,7 @@ jobs:
           build-args: |
             BOT_SHA256_AMD64=${{ steps.bot.outputs.amd64 }}
             BOT_SHA256_ARM64=${{ steps.bot.outputs.arm64 }}
+            APT_CACHE_BUST=${{ steps.day.outputs.date }}
           cache-from: type=gha,scope=public-release
           cache-to: type=gha,mode=max,scope=public-release
 
@@ -145,6 +150,7 @@ jobs:
           build-args: |
             BOT_SHA256_AMD64=${{ steps.bot.outputs.amd64 }}
             BOT_SHA256_ARM64=${{ steps.bot.outputs.arm64 }}
+            APT_CACHE_BUST=${{ steps.day.outputs.date }}
           # SBOM + provenance are attached as attestations below, not as extra manifests.
           provenance: false
           cache-from: type=gha,scope=public-release
