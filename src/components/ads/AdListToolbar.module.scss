@@ -113,6 +113,20 @@
   flex-shrink: 0;
 }
 
+.sortSelect {
+  height: 36px;
+  max-width: 200px;
+  padding: var(--space-1) var(--space-2);
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 .viewToggle {
   display: flex;
   gap: var(--space-1);
