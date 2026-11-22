@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     // cookieOnly never launches a browser (it reads disk/VNC cookies or bails), so it is
     // always safe to attempt — even while the bot is busy. In visible mode this auto-connects
     // messaging from the warm VNC browser on page load.
-    if (status.status === 'not_started' || status.status === 'error') {
+    if (status.status === 'not_started' || status.status === 'error' || (status.status === 'browserless' && !status.userId)) {
       try {
         await Promise.race([
           ensureSession(user.workspace, { cookieOnly: true }),

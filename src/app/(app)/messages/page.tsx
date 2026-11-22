@@ -101,6 +101,7 @@ function StatusView({ status, error, cancellable = false }: { status: string; er
         <p className={styles.statusText}>
           {STATUS_MESSAGES[status] || 'Verbindung wird hergestellt...'}
         </p>
+        {error && <p className={styles.statusText}>{error}</p>}
         {cancellable && (
           <Button
             variant="ghost"

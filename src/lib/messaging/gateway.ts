@@ -217,6 +217,20 @@ export async function ensureSession(
   // Browserless mode: bot is using the shared profile, return session as-is
   // API calls continue with cached cookies — never launch a browser here
   if (existing && existing.status === 'browserless') {
+    // Never had a session (bot took the browser while we were still starting): the bot's
+    // login has usually saved valid cookies to disk by now — adopt them so the inbox
+    // loads instead of an endless "Browser wird gestartet" spinner.
+    if (!existing.userId) {
+      const persisted = loadCookiesFromDisk(workspace);
+      if (persisted) {
+        const userId = await fetchUserId(persisted.cookies);
+        if (userId && !isAccessTokenExpired(persisted.cookies)) {
+          existing.cookies = persisted.cookies;
+          existing.userId = userId;
+          existing.lastCookieRefresh = persisted.savedAt;
+        }
+      }
+    }
     return existing;
   }
 
