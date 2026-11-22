@@ -3,9 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DropdownMenu } from '@/components/ui';
 import type { DropdownMenuItem } from '@/components/ui';
+import type { AdSortKey } from './AdTable';
+import type { SortDir } from '@/hooks/useSort';
 import styles from './AdListToolbar.module.scss';
 
 type ViewMode = 'grid' | 'table';
+
+export const SORT_OPTIONS: { value: string; label: string; key: AdSortKey; dir: SortDir }[] = [
+  { value: 'title:asc', label: 'Titel A–Z', key: 'title', dir: 'asc' },
+  { value: 'created_on:asc', label: 'Erstellt: älteste zuerst', key: 'created_on', dir: 'asc' },
+  { value: 'created_on:desc', label: 'Erstellt: neueste zuerst', key: 'created_on', dir: 'desc' },
+  { value: 'expires_at:asc', label: 'Endet: bald zuerst', key: 'expires_at', dir: 'asc' },
+  { value: 'expires_at:desc', label: 'Endet: spät zuerst', key: 'expires_at', dir: 'desc' },
+];
 
 export interface StatusCounts {
   active: number;
@@ -97,6 +107,9 @@ interface AdListToolbarProps {
   statusFilter: string | null;
   onStatusChange: (status: string | null) => void;
   statusCounts: StatusCounts;
+  sortKey: AdSortKey;
+  sortDir: SortDir;
+  onSortChange: (key: AdSortKey, dir: SortDir) => void;
 }
 
 export function AdListToolbar({
@@ -111,6 +124,9 @@ export function AdListToolbar({
   statusFilter,
   onStatusChange,
   statusCounts,
+  sortKey,
+  sortDir,
+  onSortChange,
 }: AdListToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -205,6 +221,19 @@ export function AdListToolbar({
       </div>
 
       <span className={styles.count}>{countText}</span>
+
+      <select
+        className={styles.sortSelect}
+        aria-label="Sortierung"
+        value={SORT_OPTIONS.some((o) => o.value === `${sortKey}:${sortDir}`) ? `${sortKey}:${sortDir}` : ''}
+        onChange={(e) => {
+          const opt = SORT_OPTIONS.find((o) => o.value === e.target.value);
+          if (opt) onSortChange(opt.key, opt.dir);
+        }}
+      >
+        <option value="" disabled>Sortierung</option>
+        {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
 
       {/* View toggle: Filter | Grid | Table | Select */}
       <div className={styles.viewToggle}>

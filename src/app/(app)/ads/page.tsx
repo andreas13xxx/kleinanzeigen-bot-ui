@@ -330,6 +330,9 @@ export default function AdsPage() {
             statusFilter={statusFilter}
             onStatusChange={handleStatusChange}
             statusCounts={statusCounts}
+            sortKey={tableSortKey}
+            sortDir={tableSortDir}
+            onSortChange={handleTableSortChange}
           />
           {filteredAds.length === 0 && search ? (
             <div className={styles.emptyState}>
