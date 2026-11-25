@@ -3,12 +3,15 @@
 import { memo, useMemo } from 'react';
 import Link from 'next/link';
 import type { AdListItem } from '@/types/ad';
-import { getNextRepubDate, getExpiryDate } from '@/lib/ads/status';
+import type { AdStatsEntry } from '@/types/stats';
+import { getNextRepubDate, getReliableExpiryDate } from '@/lib/ads/status';
 import { projectReposts } from '@/lib/ads/pricing';
 import styles from './ScheduleCalendar.module.scss';
 
 interface ScheduleCalendarProps {
   ads: AdListItem[];
+  /** Current KA stats keyed by ad id; supplies the real expires_at. */
+  stats?: Record<string, AdStatsEntry>;
 }
 
 const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -62,7 +65,7 @@ function getPriceChangeForDate(ad: AdListItem, repostDate: Date): string | null 
   return null;
 }
 
-export const ScheduleCalendar = memo(function ScheduleCalendar({ ads }: ScheduleCalendarProps) {
+export const ScheduleCalendar = memo(function ScheduleCalendar({ ads, stats }: ScheduleCalendarProps) {
   const days = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -105,10 +108,10 @@ export const ScheduleCalendar = memo(function ScheduleCalendar({ ads }: Schedule
       }
     }
 
-    // Assign expiring ads (60-day platform lifetime via shared getExpiryDate)
+    // Assign expiring ads (real expires_at from stats, 60-day estimate only as fallback)
     for (const ad of ads) {
       if (!ad.id || ad.active === false) continue;
-      const expiry = getExpiryDate(ad);
+      const expiry = getReliableExpiryDate(ad, stats?.[String(ad.id)]);
       if (!expiry) continue;
       const expiryDay = new Date(expiry);
       expiryDay.setHours(0, 0, 0, 0);
@@ -121,7 +124,7 @@ export const ScheduleCalendar = memo(function ScheduleCalendar({ ads }: Schedule
     }
 
     return buckets;
-  }, [ads]);
+  }, [ads, stats]);
 
   const today = new Date();
 

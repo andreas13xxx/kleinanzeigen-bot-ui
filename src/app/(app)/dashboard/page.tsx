@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useAds } from '@/hooks/useAds';
 import { StatsGrid } from '@/components/dashboard/StatsGrid';
 import { HealthIndicators } from '@/components/dashboard/HealthIndicators';
@@ -11,14 +11,8 @@ import { CategoryBars } from '@/components/dashboard/CategoryBars';
 import { DistributionCharts } from '@/components/dashboard/DistributionCharts';
 import { StatsSection } from '@/components/dashboard/StatsSection';
 import { PageLoader } from '@/components/ui';
-import { api } from '@/lib/api/client';
-import type { AdStatsEntry } from '@/types/stats';
+import { useAdStats } from '@/hooks/useAdStats';
 import styles from './page.module.scss';
-
-interface StatsResponse {
-  last_updated: string | null;
-  ads: Record<string, AdStatsEntry>;
-}
 
 export default function DashboardPage() {
   const { data: adsData, isLoading: adsLoading } = useAds();
@@ -32,13 +26,8 @@ export default function DashboardPage() {
     return map;
   }, [ads]);
 
-  const [statsData, setStatsData] = useState<StatsResponse>({ last_updated: null, ads: {} });
-
-  useEffect(() => {
-    api.get<StatsResponse>('/api/stats')
-      .then(setStatsData)
-      .catch(() => {});
-  }, []);
+  // Shared react-query cache with StatsGrid: one fetch, same data everywhere.
+  const { data: statsData } = useAdStats();
 
   if (adsLoading) {
     return <PageLoader />;
@@ -48,12 +37,12 @@ export default function DashboardPage() {
     <div className={`${styles.dashboard} animStagger`}>
       <StatsGrid ads={ads} />
       <HealthIndicators ads={ads} />
-      <ScheduleCalendar ads={ads} />
+      <ScheduleCalendar ads={ads} stats={statsData?.ads} />
       <PerformanceMetrics ads={ads} />
       <PriceChart ads={ads} />
       <CategoryBars ads={ads} />
       <DistributionCharts ads={ads} />
-      <StatsSection stats={statsData.ads} lastUpdated={statsData.last_updated} adNames={adNames} />
+      <StatsSection stats={statsData?.ads ?? {}} lastUpdated={statsData?.last_updated ?? null} adNames={adNames} />
     </div>
   );
 }
