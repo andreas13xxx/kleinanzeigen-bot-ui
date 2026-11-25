@@ -50,6 +50,16 @@ export function getExpiryDate(ad: AdListItem, adStats?: AdStatsEntry): Date | nu
 }
 
 /**
+ * Expiry date for display where a wrong date would mislead (dashboard calendar).
+ * Online-confirmed ads without the real end date return null: the 60-day estimate
+ * from updated_on/created_on is stale after a renewal on kleinanzeigen.de.
+ */
+export function getReliableExpiryDate(ad: AdListItem, adStats?: AdStatsEntry): Date | null {
+  if (ad.is_online && !adStats?.expires_at) return null;
+  return getExpiryDate(ad, adStats);
+}
+
+/**
  * True when the ad is past its 60-day platform lifetime.
  * Ads confirmed online by the last download listing are never expired: downloaded
  * ads often carry their original created_on/updated_on, which would falsely read as >60 days.

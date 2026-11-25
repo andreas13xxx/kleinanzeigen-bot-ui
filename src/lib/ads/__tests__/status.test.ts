@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { getNextRepubDate, getExpiryDate, isExpired, isExpiringSoon, getExpiryDaysLeft, liveDeleteAvailability, getStatusLabel, getStatusVariant } from '../status';
+import { getNextRepubDate, getExpiryDate, getReliableExpiryDate, isExpired, isExpiringSoon, getExpiryDaysLeft, liveDeleteAvailability, getStatusLabel, getStatusVariant } from '../status';
 import type { AdListItem } from '@/types/ad';
 
 function makeAd(overrides: Partial<AdListItem> = {}): AdListItem {
@@ -288,5 +288,22 @@ describe('getExpiryDaysLeft', () => {
     const ad = makeAd({ updated_on: '2026-01-01T00:00:00Z' });
     // Expiry: Mar 2 00:00. Now: Feb 28 12:00. 1.5 days → ceil → 2.
     expect(getExpiryDaysLeft(ad)).toBe(2);
+  });
+});
+
+describe('getReliableExpiryDate', () => {
+  const stats = (expires_at: string | null) => ({ views: 0, watchlist: 0, replies: 0, state: 'active', activated_at: null, expires_at });
+  const ad = makeAd({ id: 1, updated_on: '2026-09-10T00:00:00Z' });
+
+  it('uses the real end date when known', () => {
+    expect(getReliableExpiryDate(ad, stats('09.01.2027'))).toEqual(new Date(2027, 0, 10));
+  });
+
+  it('online ad without real end date: null instead of a stale estimate', () => {
+    expect(getReliableExpiryDate({ ...ad, is_online: true })).toBeNull();
+  });
+
+  it('offline ad without real end date: 60-day estimate', () => {
+    expect(getReliableExpiryDate(ad)).toEqual(getExpiryDate(ad));
   });
 });
