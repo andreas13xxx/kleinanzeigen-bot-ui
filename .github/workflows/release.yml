@@ -1,8 +1,8 @@
 name: Release · Docker Build & Push
 
 on:
-  # Every push to main runs release-please. It keeps a Release PR open (version bump from
-  # Conventional Commits: feat -> minor, fix -> patch, breaking -> major). Merging that PR
+  # Every push to main runs release-please. It keeps a Release PR open with the next
+  # v<upstream>-fork<N+1> version (see "Compute next fork version"). Merging that PR
   # creates the tag and the GitHub release; the image is then built, scanned and pushed.
   push:
     branches: [main]
@@ -29,11 +29,72 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      # Pinned CLI version. The action cannot pass --release-as in manifest mode, so we
+      # call the release-please CLI directly.
+      RELEASE_PLEASE: release-please@17.11.2
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
-        id: release
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: 22
+
+      # Versions follow upstream: v<upstream>-fork<N>. Conventional Commits must NOT bump
+      # the upstream part, so the next version is computed here and forced via --release-as.
+      #   manifest 2.77.5-fork10, package.json 2.77.5[-forkN] -> 2.77.5-fork11
+      #   package.json moved to a new upstream (e.g. 2.78.0)  -> 2.78.0-fork1
+      - name: Compute next fork version
+        id: ver
+        run: |
+          set -euo pipefail
+          current=$(jq -r '."."' .release-please-manifest.json)
+          cur_base=${current%-fork*}
+          cur_n=${current##*-fork}
+          pkg_base=$(jq -r .version package.json | sed 's/-fork.*$//')
+          [[ "$cur_n" =~ ^[0-9]+$ ]] || { echo "::error::Manifest version '$current' has no -forkN suffix"; exit 1; }
+          # Manual / bot-watch runs create fork tags without touching the manifest, so
+          # count from the highest existing tag of this base as well.
+          last=$(git ls-remote --tags --refs origin "refs/tags/v${pkg_base}-fork*" \
+            | sed -n "s|.*refs/tags/v${pkg_base}-fork\([0-9][0-9]*\)\$|\1|p" | sort -n | tail -1)
+          n=${last:-0}
+          if [ "$pkg_base" = "$cur_base" ] && [ "$cur_n" -gt "$n" ]; then
+            n=$cur_n
+          fi
+          next="${pkg_base}-fork$(( n + 1 ))"
+          echo "current=${current}" >> "$GITHUB_OUTPUT"
+          echo "next=${next}" >> "$GITHUB_OUTPUT"
+          echo "Current: ${current}, next: ${next}"
+
+      # After a Release PR merge the manifest holds a version without a tag yet:
+      # create tag + GitHub release for it.
+      - name: Create release for a merged Release PR
+        id: release
+        env:
+          CURRENT: ${{ steps.ver.outputs.current }}
+        run: |
+          set -euo pipefail
+          tag="v${CURRENT}"
+          if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
+            echo "release_created=false" >> "$GITHUB_OUTPUT"
+            echo "Release $tag exists — nothing to release."
+            exit 0
+          fi
+          npx -y "$RELEASE_PLEASE" github-release \
+            --token "$GH_TOKEN" --repo-url "$REPO" --target-branch main
+          gh release view "$tag" --repo "$REPO" >/dev/null || { echo "::error::release-please did not create $tag"; exit 1; }
+          echo "release_created=true" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the Release PR
+        env:
+          NEXT: ${{ steps.ver.outputs.next }}
+        run: |
+          npx -y "$RELEASE_PLEASE" release-pr \
+            --token "$GH_TOKEN" --repo-url "$REPO" --target-branch main \
+            --release-as "$NEXT"
 
   ci:
     name: Quality gate
