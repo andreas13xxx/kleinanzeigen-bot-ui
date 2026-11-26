@@ -2,7 +2,10 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "skip-changelog": true
+      "skip-changelog": true,
+      "versioning": "prerelease",
+      "prerelease": true,
+      "prerelease-type": "fork"
     }
   }
 }
