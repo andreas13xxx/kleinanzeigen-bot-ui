@@ -4,7 +4,7 @@
 PR / push to main ──► CI (lint, tsc, vitest, build, hadolint, image build + Trivy)
                       Security (dependency review, npm audit, gitleaks, Trivy fs)
                       CodeQL via GitHub "Default setup" (Settings -> Code security, suite: Extended)
-push of a v* tag ──┐
+merge Release PR ──┐
 bot-watch (daily) ─┼─► Release: CI gate (no image build) ─► build amd64 ─► Trivy scan ─► push multi-arch ─► attest
 manual dispatch ───┘                                                          └─► GitHub release
                                                     deploy: manual, on the server (see below)
@@ -22,17 +22,22 @@ keeps its own, in its own tag namespace.
 - **Tags** are the upstream version the code is based on plus a fork counter:
   `v2.77.5-fork1`, `v2.77.5-fork2`, ... Upstream never produces such a tag, so it cannot collide
   with a tag you fetch from upstream later. Every release builds with the newest upstream bot.
-- **By hand:** push the tag (or create it via *Releases → Draft a new release*).
-  ```bash
-  git tag v2.77.5-fork1 && git push origin v2.77.5-fork1
-  ```
-- **Automatic:** a manual run of *Release* (Actions tab) or `bot-watch` (new upstream bot) picks
-  the next free number itself: `v<version in package.json>-fork<highest + 1>`. Tag and GitHub
-  release are created only after the image was pushed, so no tag is left without an image.
-- Either way the **Release** workflow runs the quality gate, builds the image, scans it, pushes
-  `…:<tag>` plus `latest` and creates the GitHub release with generated notes. An existing release
-  for the tag is left alone.
-- The release workflow does not run on `release: published`; the tag push is the single trigger.
+- **Release PR (normal path):** every push to `main` runs release-please. It keeps one Release PR
+  open that proposes the next fork version. Merging it creates tag and GitHub release; the
+  workflow then builds, scans and pushes the image and adds the image info to the release notes.
+  - The version is computed in the workflow, not from Conventional Commits, so `feat:` or
+    breaking commits never touch the upstream part: `v<upstream>-fork<highest + 1>`.
+  - "Highest" is the larger of the manifest (`.release-please-manifest.json`) and the existing
+    `v<upstream>-fork*` tags.
+  - **New upstream version:** when `package.json` carries a new upstream version (e.g. `2.78.0`
+    after merging upstream), the next Release PR proposes `2.78.0-fork1`.
+  - Needs *Settings → Actions → General → Allow GitHub Actions to create and approve pull
+    requests*. The Release PR gets no CI checks (it is opened with `GITHUB_TOKEN`).
+- **Manual run / bot-watch:** a manual run of *Release* (Actions tab) or `bot-watch` (new
+  upstream bot) skips the Release PR and picks the next free tag itself:
+  `v<upstream>-fork<highest tag + 1>`. Tag and GitHub release are created only after the image
+  was pushed, so no tag is left without an image.
+- Pushing a `v*` tag by hand no longer starts a release.
 
 ## Keeping the bot current
 
