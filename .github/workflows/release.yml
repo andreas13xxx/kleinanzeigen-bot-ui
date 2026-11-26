@@ -1,11 +1,11 @@
 name: Release · Docker Build & Push
 
 on:
-  # A version tag (v2.77.5-fork1, v2.78.0, ...) builds that version AND creates its GitHub
-  # release. Creating a release in the web UI pushes the tag too, so one trigger covers both —
-  # a separate `release: published` trigger would run everything twice.
+  # Every push to main runs release-please. It keeps a Release PR open (version bump from
+  # Conventional Commits: feat -> minor, fix -> patch, breaking -> major). Merging that PR
+  # creates the tag and the GitHub release; the image is then built, scanned and pushed.
   push:
-    tags: ["v*"]
+    branches: [main]
   # Manual run, and the entry point for bot-watch when a new kleinanzeigen-bot is out.
   # Picks the next free tag v<package.json version>-fork<N> and releases it after the push.
   workflow_dispatch:
@@ -18,8 +18,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-please:
+    name: Release PR / Release
+    # Only a push decides about releases; a manual run just rebuilds the image.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   ci:
     name: Quality gate
+    needs: release-please
+    # always(): release-please is skipped on a manual run, which would skip this job too.
+    if: |
+      always() && (
+        github.event_name == 'workflow_dispatch'
+        || needs.release-please.outputs.release_created == 'true'
+      )
     uses: ./.github/workflows/ci.yml
     with:
       # This workflow builds and scans the image itself below.
@@ -27,7 +51,9 @@ jobs:
 
   docker-build:
     name: Build, scan & push image
-    needs: ci
+    needs: [release-please, ci]
+    if: |
+      always() && needs.ci.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -78,8 +104,8 @@ jobs:
         id: rel
         run: |
           set -euo pipefail
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            tag="$GITHUB_REF_NAME"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag="${{ needs.release-please.outputs.tag_name }}"
           else
             base=$(jq -r .version package.json)
             last=$(git ls-remote --tags --refs origin "refs/tags/v${base}-fork*" \
@@ -175,8 +201,8 @@ jobs:
           DIGEST: ${{ needs.docker-build.outputs.digest }}
         run: |
           set -euo pipefail
-          # A release made by hand in the web UI already exists by the time this runs.
-          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+          # A release made by hand already exists by the time this runs (manual run only).
+          if [ "$GITHUB_EVENT_NAME" != "push" ] && gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists — nothing to do."
             exit 0
           fi
@@ -193,10 +219,11 @@ jobs:
             echo
           } > notes.md
 
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            # The tag exists already (pushed by hand or by the web UI).
-            gh release create "$TAG" --repo "$REPO" --verify-tag --title "$TAG" \
-              --notes-file notes.md --generate-notes
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            # release-please made the release; add the image info to its notes.
+            gh release view "$TAG" --repo "$REPO" --json body --jq .body > old.md
+            cat notes.md old.md > all.md
+            gh release edit "$TAG" --repo "$REPO" --notes-file all.md
           else
             # Manual / bot-watch run: create the tag at the built commit together with the release.
             gh release create "$TAG" --repo "$REPO" --target "$GITHUB_SHA" --title "$TAG" \
